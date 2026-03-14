@@ -15,8 +15,10 @@ from data.processor.builder import EEGConfig, EEGDatasetBuilder
 
 @dataclass
 class HMCConfig(EEGConfig):
-    name: str = 'pretrain'
-    version: Optional[Union[datasets.utils.Version, str]] = datasets.utils.Version("1.1.0")
+    name: str = "pretrain"
+    version: Optional[Union[datasets.utils.Version, str]] = datasets.utils.Version(
+        "1.1.0"
+    )
     description: Optional[str] = (
         "A collection of 151 whole-night polysomnographic (PSG) sleep recordings (85 Male, 66 Female, mean Age of 53.9 ± 15.4)"
         " collected during 2018 at the Haaglanden Medisch Centrum (HMC, The Netherlands) sleep center. "
@@ -24,8 +26,11 @@ class HMCConfig(EEGConfig):
         "examination on the context of different sleep disorders. The dataset contains electroencephalographic (EEG), "
         "electrooculographic (EOG), chin electromyographic (EMG), and electrocardiographic (ECG) activity, "
         "as well as event annotations corresponding to scoring of sleep patterns (hypnogram) performed by sleep technicians at HMC. "
-        "The dataset was collected as part of a study evaluating the generalization performance of an automatic sleep scoring algorithm across multiple heterogeneous datasets.")
-    citation: Optional[str] = """\
+        "The dataset was collected as part of a study evaluating the generalization performance of an automatic sleep scoring algorithm across multiple heterogeneous datasets."
+    )
+    citation: Optional[
+        str
+    ] = """\
     @article{10.1371/journal.pone.0256111,
     doi = {10.1371/journal.pone.0256111},
     author = {Alvarez-Estevez, Diego AND Rijsman, Roselyne M.},
@@ -43,37 +48,32 @@ class HMCConfig(EEGConfig):
 
     filter_notch: float = 50.0
 
-    dataset_name: Optional[str] = 'hmc'
+    dataset_name: Optional[str] = "hmc"
     task_type: DatasetTaskType = DatasetTaskType.SLEEP_STAGE
-    file_ext: str = 'edf'
-    montage: dict[str, list[str]] = field(default_factory=lambda: {
-        'AASM_24_Minimal': [
-            'EEG F4-M1',
-            'EEG C4-M1',
-            'EEG O2-M1',
-            'EEG C3-M2'
-        ]
-    })
+    file_ext: str = "edf"
+    montage: dict[str, list[str]] = field(
+        default_factory=lambda: {
+            "AASM_24_Minimal": ["EEG F4-M1", "EEG C4-M1", "EEG O2-M1", "EEG C3-M2"]
+        }
+    )
 
     valid_ratio: float = 0.162
     test_ratio: float = 0.162
     wnd_div_sec: int = 30
     suffix_path: str = "HMC"
-    scan_sub_dir: str = "recordings"
+    scan_sub_dir: str = os.path.join("1.1", "recordings")
 
-    category: list[str] = field(default_factory=lambda: [
-        'W', 'R', 'N1', 'N2', 'N3'
-    ])
+    category: list[str] = field(default_factory=lambda: ["W", "R", "N1", "N2", "N3"])
 
 
 class HMCBuilder(EEGDatasetBuilder):
     BUILDER_CONFIG_CLASS = HMCConfig
     BUILDER_CONFIGS = [
-        BUILDER_CONFIG_CLASS(name='pretrain'),
-        BUILDER_CONFIG_CLASS(name='finetune', is_finetune=True)
+        BUILDER_CONFIG_CLASS(name="pretrain"),
+        BUILDER_CONFIG_CLASS(name="finetune", is_finetune=True),
     ]
 
-    def __init__(self, config_name='pretrain',**kwargs):
+    def __init__(self, config_name="pretrain", **kwargs):
         super().__init__(config_name, **kwargs)
 
     def _walk_raw_data_files(self):
@@ -81,7 +81,10 @@ class HMCBuilder(EEGDatasetBuilder):
         raw_data_files = []
         for root, dirs, files in os.walk(scan_path):
             for file in files:
-                if file.endswith(self.config.file_ext) and len(self._extract_file_name(file).split('_')) == 1:
+                if (
+                    file.endswith(self.config.file_ext)
+                    and len(self._extract_file_name(file).split("_")) == 1
+                ):
                     file_path = os.path.join(root, file)
                     raw_data_files.append(os.path.normpath(file_path))
         return raw_data_files
@@ -90,8 +93,8 @@ class HMCBuilder(EEGDatasetBuilder):
         file_name = self._extract_file_name(file_path)
         subject = file_name[2:]
         return {
-            'subject': int(subject),
-            'session': 1,
+            "subject": int(subject),
+            "session": 1,
         }
 
     def _resolve_exp_meta_info(self, file_path: str) -> dict[str, Any]:
@@ -99,34 +102,42 @@ class HMCBuilder(EEGDatasetBuilder):
         with self._read_raw_data(file_path, preload=False, verbose=False) as raw:
             time = raw.duration
 
-        info.update({
-            'montage': 'AASM_24_Minimal',
-            'time': time,
-        })
+        info.update(
+            {
+                "montage": "AASM_24_Minimal",
+                "time": time,
+            }
+        )
         return info
 
     def _resolve_exp_events(self, file_path: str, info: dict[str, Any]):
         if not self.config.is_finetune:
-            return [('default', 0, -1)]
+            return [("default", 0, -1)]
 
         file_name = self._extract_file_name(file_path)
-        event_file_name = file_name + '_sleepscoring.txt'
-        scan_path = os.path.join(self.config.raw_path, self.config.scan_sub_dir, event_file_name)
-        df = pd.read_csv(scan_path, sep=r'\s*,\s*', header=0, engine='python')
+        event_file_name = file_name + "_sleepscoring.txt"
+        scan_path = os.path.join(
+            self.config.raw_path, self.config.scan_sub_dir, event_file_name
+        )
+        df = pd.read_csv(scan_path, sep=r"\s*,\s*", header=0, engine="python")
 
         # Find valid sleeping duration, and exclude slices do not up to 30s
-        start_idx = df.loc[df['Annotation'] == 'Lights off'].index.item() + 1
-        end_idx = df.loc[df['Annotation'] == 'Lights on'].index.item()
+        start_idx = df.loc[df["Annotation"] == "Lights off"].index.item() + 1
+        end_idx = df.loc[df["Annotation"] == "Lights on"].index.item()
         df = df.iloc[start_idx:end_idx, :]
-        df = df.loc[df['Duration'] >= 30]
+        df = df.loc[df["Duration"] >= 30]
 
         annotations = []
         for i in range(len(df)):
-            annotations.append((
-                df.iloc[i, df.columns.get_loc('Annotation')].split(' ')[-1],
-                round(df.iloc[i, df.columns.get_loc('Recording onset')] * 1000),
-                round((df.iloc[i, df.columns.get_loc('Recording onset')] + 30) * 1000),
-            ))
+            annotations.append(
+                (
+                    df.iloc[i, df.columns.get_loc("Annotation")].split(" ")[-1],
+                    round(df.iloc[i, df.columns.get_loc("Recording onset")] * 1000),
+                    round(
+                        (df.iloc[i, df.columns.get_loc("Recording onset")] + 30) * 1000
+                    ),
+                )
+            )
         return annotations
 
     def _divide_split(self, df: DataFrame) -> DataFrame:
@@ -137,11 +148,13 @@ class HMCBuilder(EEGDatasetBuilder):
             return self._std_chs_cache[montage]
 
         chs = self.config.montage[montage]
-        chs_std = [ch.split(sep=' ')[1].split('-')[0] for ch in chs]
+        chs_std = [ch.split(sep=" ")[1].split("-")[0] for ch in chs]
         self._std_chs_cache[montage] = chs_std
         return chs_std
 
-    def _read_raw_data(self, file_path: str, preload: bool = False, verbose: bool = False) -> BaseRaw:
+    def _read_raw_data(
+        self, file_path: str, preload: bool = False, verbose: bool = False
+    ) -> BaseRaw:
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
@@ -152,7 +165,7 @@ class HMCBuilder(EEGDatasetBuilder):
 
 
 if __name__ == "__main__":
-    builder = HMCBuilder('finetune')
+    builder = HMCBuilder("finetune")
     # builder.clean_disk_cache()
     # builder.preproc()
     builder.download_and_prepare(num_proc=8)
