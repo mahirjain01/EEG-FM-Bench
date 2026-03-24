@@ -1576,8 +1576,10 @@ class AbstractTrainer(ABC):
             self.eval_epoch(valid_loaders, "eval")
             self.eval_epoch(test_loaders, "test")
 
-            # Save checkpoint
-            if (epoch + 1) % self.cfg.logging.ckpt_interval == 0:
+            # Save checkpoint when periodic saving is enabled.
+            if self.cfg.logging.ckpt_interval > 0 and (
+                (epoch + 1) % self.cfg.logging.ckpt_interval == 0
+            ):
                 self.save_checkpoint()
 
         self.save_checkpoint(is_milestone=True)
@@ -1639,8 +1641,10 @@ class AbstractTrainer(ABC):
                 self.eval_epoch([valid_loader], "eval")
                 self.eval_epoch([test_loader], "test")
 
-                # Save checkpoint
-                if (epoch + 1) % self.cfg.logging.ckpt_interval == 0:
+                # Save checkpoint when periodic saving is enabled.
+                if self.cfg.logging.ckpt_interval > 0 and (
+                    (epoch + 1) % self.cfg.logging.ckpt_interval == 0
+                ):
                     self.save_checkpoint(ds_name=ds_name)
 
             self.save_checkpoint(ds_name, is_milestone=True)

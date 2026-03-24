@@ -29,12 +29,32 @@ from baseline.reve.reve_trainer import ReveTrainer
 from baseline.manas.manas_adapter import MANASDataLoaderFactory
 from baseline.manas.manas_config import MANASConfig
 from baseline.manas.manas_trainer import MANASTrainer
+from baseline.ndx_mae_linear_split.ndx_mae_config import NdxMAEConfig
+from baseline.ndx_mae_linear_split.ndx_mae_trainer import NdxMAETrainer
+from baseline.cosine_split_mae.cosine_split_mae_config import CosineSplitMAEConfig
+from baseline.cosine_split_mae.cosine_split_mae_trainer import (
+    CosineSplitMAETrainer,
+)
 
 ModelRegistry.register_model(
     model_type="MANAS",
     config_class=MANASConfig,
     adapter_class=MANASDataLoaderFactory,
     trainer_class=MANASTrainer,
+)
+
+ModelRegistry.register_model(
+    model_type="ndx_mae",
+    config_class=NdxMAEConfig,
+    adapter_class=MANASDataLoaderFactory,
+    trainer_class=NdxMAETrainer,
+)
+
+ModelRegistry.register_model(
+    model_type="cosine_split_mae",
+    config_class=CosineSplitMAEConfig,
+    adapter_class=MANASDataLoaderFactory,
+    trainer_class=CosineSplitMAETrainer,
 )
 
 ModelRegistry.register_model(

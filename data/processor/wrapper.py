@@ -106,7 +106,7 @@ def get_dataset_shape_info(dataset_name: str, config_name: str, fs: int) -> dict
         Dict mapping montage_key -> (n_timepoints, n_channels)
     """
     builder_cls = DATASET_SELECTOR[dataset_name]
-    builder: EEGDatasetBuilder = builder_cls(config_name=config_name)
+    builder: EEGDatasetBuilder = builder_cls(config_name=config_name, fs=fs)
 
     config: EEGConfig = builder.config
     n_timepoints = int(config.wnd_div_sec * fs)
@@ -226,5 +226,4 @@ if __name__ == '__main__':
 
     for batch in loader:
         pass
-
 

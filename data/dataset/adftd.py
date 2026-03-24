@@ -2,6 +2,7 @@ import logging
 import os.path
 import warnings
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional, Union, Any
 
 import datasets
@@ -104,6 +105,23 @@ class AdftdBuilder(EEGDatasetBuilder):
         csv_path: str = os.path.join(
             self.config.raw_path, self.config.scan_sub_dir, "participants.tsv"
         )
+        if not os.path.exists(csv_path):
+            cache_root = Path(self.cache_dir)
+            proc_root = Path(self.config.database_proc_root)
+            dataset_name = self.config.dataset_name or "adftd"
+            split_name = self.config.name
+            has_cached_data = (
+                (cache_root.exists() and any(cache_root.rglob("*.arrow")))
+                or any(proc_root.glob(f"fs_*/{dataset_name}/{split_name}/**/*.arrow"))
+            )
+            if has_cached_data:
+                logger.warning(
+                    "ADFTD metadata %s not found; continuing with cached processed data at %s",
+                    csv_path,
+                    self.cache_dir,
+                )
+                self.sub_meta = DataFrame()
+                return
         df = pd.read_csv(csv_path, sep="\t")
 
         self.sub_meta: DataFrame = df

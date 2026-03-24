@@ -88,7 +88,35 @@ class WorkloadBuilder(EEGDatasetBuilder):
 
     def __init__(self, config_name='pretrain',**kwargs):
         super().__init__(config_name, **kwargs)
+        self._resolve_raw_path_fallback()
         self._load_meta_info()
+
+    def _resolve_raw_path_fallback(self):
+        meta_path = os.path.join(self.config.raw_path, 'subject-info.csv')
+        if os.path.exists(meta_path):
+            return
+
+        legacy_root = os.path.dirname(self.config.raw_path)
+        alt_raw_path = os.path.join(legacy_root, 'Workload')
+        alt_meta_path = os.path.join(alt_raw_path, 'subject-info.csv')
+        if not os.path.exists(alt_meta_path):
+            return
+
+        logger.warning(
+            "Workload raw path %s not found; falling back to %s",
+            self.config.raw_path,
+            alt_raw_path,
+        )
+        self.config.raw_path = alt_raw_path
+        self.summary_path = os.path.join(self.config.raw_path, 'summary', self.config.name)
+        self.info_csv_path = os.path.join(
+            self.summary_path,
+            f'{self.dataset_name}_{self.config.name}_info.csv'
+        )
+        self.mid_file_csv_path = os.path.join(
+            self.summary_path,
+            f'{self.dataset_name}_{self.config.name}_{self.config.get_fs_id()}_cache_files.csv'
+        )
 
     def _load_meta_info(self):
         try:

@@ -1,18 +1,25 @@
 import os
-from typing import Literal, Optional
+from typing import Optional
 
 import torch
 from torch import nn
 
 from baseline.abstract.classifier import MultiHeadClassifier
 from baseline.abstract.trainer import AbstractTrainer
-from baseline.manas.MAEBottleneckDecoderv2 import MAE, MAEConfig
+from baseline.manas.MAEBottleneckDecoderv2 import (
+    MAE as BenchV2MAE,
+    MAEConfig as BenchV2MAEConfig,
+)
+from baseline.manas.ndx_legacy_model import (
+    MAEEncoderAdapter as NdxLegacyMAEEncoderAdapter,
+    MAEConfig as NdxLegacyMAEConfig,
+)
 from baseline.manas.manas_adapter import MANASDataLoaderFactory
 from baseline.manas.manas_config import MANASConfig
 
 
 class MANASUnifiedModel(nn.Module):
-    def __init__(self, encoder: MAE, classifier: MultiHeadClassifier):
+    def __init__(self, encoder: nn.Module, classifier: MultiHeadClassifier):
         super().__init__()
 
         self.encoder = encoder
@@ -46,7 +53,7 @@ class MANASTrainer(AbstractTrainer):
             num_workers=self.config.data.num_workers,
         )
 
-        self.encoder: Optional[MAE] = None
+        self.encoder: Optional[nn.Module] = None
         self.classifier: Optional[MultiHeadClassifier] = None
         self.loss_fn = nn.CrossEntropyLoss()
 
@@ -58,7 +65,95 @@ class MANASTrainer(AbstractTrainer):
             return 0
         return 1 + (n_timepoints - patch_size) // (patch_size - overlap_size)
 
-    def load_checkpoint(self, checkpoint_path: str):
+    def _get_encoder_config(self):
+        model_cfg = self.config.model
+        if model_cfg.checkpoint_variant == "ndx_legacy":
+            return NdxLegacyMAEConfig(
+                fs=model_cfg.fs,
+                patch_size=model_cfg.patch_size,
+                overlap_size=model_cfg.overlap_size,
+                dim=model_cfg.dim,
+                enc_layers=model_cfg.enc_layers,
+                enc_heads=model_cfg.enc_heads,
+                dec_layers=model_cfg.dec_layers,
+                dec_heads=model_cfg.dec_heads,
+                mask_ratio=model_cfg.mask_ratio,
+                aux_weight=model_cfg.aux_weight,
+                n_freqs=model_cfg.n_freqs,
+            )
+        if model_cfg.checkpoint_variant == "bench_v2":
+            return BenchV2MAEConfig(
+                fs=model_cfg.fs,
+                patch_size=model_cfg.patch_size,
+                overlap_size=model_cfg.overlap_size,
+                dim=model_cfg.dim,
+                enc_layers=model_cfg.enc_layers,
+                enc_heads=model_cfg.enc_heads,
+                dec_layers=model_cfg.dec_layers,
+                dec_heads=model_cfg.dec_heads,
+                mask_ratio=model_cfg.mask_ratio,
+                spat_radius=model_cfg.spat_radius,
+                time_radius=model_cfg.time_radius,
+                aux_weight=model_cfg.aux_weight,
+                n_freqs=model_cfg.n_freqs,
+            )
+        raise ValueError(f"Unknown checkpoint_variant: {model_cfg.checkpoint_variant}")
+
+    def build_encoder(self) -> nn.Module:
+        encoder_cfg = self._get_encoder_config()
+        if self.config.model.checkpoint_variant == "ndx_legacy":
+            return NdxLegacyMAEEncoderAdapter(encoder_cfg)
+        return BenchV2MAE(encoder_cfg)
+
+    @staticmethod
+    def _unwrap_state_dict(checkpoint):
+        if not isinstance(checkpoint, dict):
+            return checkpoint
+
+        for key in ("model_state_dict", "state_dict", "encoder_state_dict"):
+            value = checkpoint.get(key)
+            if isinstance(value, dict):
+                return value
+
+        return checkpoint
+
+    @staticmethod
+    def _strip_prefix(state_dict: dict[str, torch.Tensor], prefix: str):
+        if not state_dict or not all(key.startswith(prefix) for key in state_dict):
+            return state_dict
+        return {key[len(prefix) :]: value for key, value in state_dict.items()}
+
+    def _extract_encoder_state_dict(
+        self, state_dict: dict[str, torch.Tensor], encoder_only: bool
+    ) -> dict[str, torch.Tensor]:
+        encoder_state = self.encoder.state_dict()
+
+        extracted = self._strip_prefix(state_dict, "module.")
+        extracted = self._strip_prefix(extracted, "model.")
+
+        prefixed_keys = (
+            "encoder.",
+            "model.encoder.",
+        )
+        for prefix in prefixed_keys:
+            prefixed = {
+                key[len(prefix) :]: value
+                for key, value in extracted.items()
+                if key.startswith(prefix)
+            }
+            if prefixed:
+                return prefixed
+
+        if encoder_only:
+            filtered = {
+                key: value for key, value in extracted.items() if key in encoder_state
+            }
+            if filtered:
+                return filtered
+
+        return extracted
+
+    def load_checkpoint(self, checkpoint_path: str, encoder_only: Optional[bool] = None):
         if not checkpoint_path:
             raise ValueError("Checkpoint path must be provided for loading.")
 
@@ -78,15 +173,27 @@ class MANASTrainer(AbstractTrainer):
                 f"Failed to load checkpoint from: {checkpoint_path}"
             ) from e
 
-        state_dict = checkpoint
-        if isinstance(checkpoint, dict):
-            state_dict = checkpoint.get("model_state_dict", checkpoint)
+        state_dict = self._unwrap_state_dict(checkpoint)
+        if not isinstance(state_dict, dict):
+            raise RuntimeError(
+                f"Checkpoint state must be a dict, got {type(state_dict).__name__}"
+            )
 
+        if encoder_only is None:
+            encoder_only = self.config.model.checkpoint_encoder_only
+
+        state_dict = self._extract_encoder_state_dict(state_dict, encoder_only)
         missing, unexpected = self.encoder.load_state_dict(state_dict, strict=False)
         if missing or unexpected:
             raise RuntimeError(
                 f"Checkpoint loading issues: missing keys: {missing}, unexpected keys: {unexpected}"
             )
+
+        return {
+            "loaded_keys": len(state_dict),
+            "missing_keys": missing,
+            "unexpected_keys": unexpected,
+        }
 
     def _setup_encoder(self):
         method = self.config.model.train_method
@@ -101,7 +208,7 @@ class MANASTrainer(AbstractTrainer):
                 "MANAS model must have 'encoder' and 'classifier' attributes."
             )
 
-        encoder: MAE = model.encoder
+        encoder = model.encoder
 
         for param in encoder.parameters():
             param.requires_grad = False
@@ -121,7 +228,7 @@ class MANASTrainer(AbstractTrainer):
                 param.requires_grad = True
 
     def setup_model(self):
-        self.encoder = MAE(MAEConfig())
+        self.encoder = self.build_encoder()
 
         embed_dim = self.config.model.dim
 

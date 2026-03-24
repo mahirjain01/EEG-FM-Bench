@@ -20,6 +20,8 @@ class MANASDataArgs(BaseDataArgs):
 
 class MANASModelArgs(BaseModelArgs):
     pretrained_path: Optional[str] = None
+    checkpoint_variant: Literal["ndx_legacy", "bench_v2"] = "bench_v2"
+    checkpoint_encoder_only: bool = False
 
     # Data
     fs: int = 200

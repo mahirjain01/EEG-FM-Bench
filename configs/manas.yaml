@@ -1,0 +1,46 @@
+model_type: MANAS
+fs: 200
+
+data:
+  batch_size: 16
+  num_workers: 4
+  datasets:
+    motor_mv_img: finetune
+    workload: finetune
+    hmc: finetune
+    siena_scalp: finetune
+    adftd: finetune
+    bcic_2a: finetune
+
+logging:
+  experiment_name: "mishra_sanity"
+  run_dir: "/share/tmp/mahir/ckpts/runs/mishra_sanity"
+  project: "eeg-fm-bench"
+  use_cloud: false
+  ckpt_interval: 0
+
+model:
+  pretrained_path: "/share/tmp/mishra/output/2026-03-22_11-03-19/mae_epoch_10.pt"
+  checkpoint_variant: "ndx_legacy"
+  checkpoint_encoder_only: false
+
+  fs: 200
+  patch_size: 200
+  overlap_size: 20
+  dim: 512
+  enc_layers: 22
+  enc_heads: 8
+  dec_layers: 4
+  dec_heads: 8
+  mask_ratio: 0.55
+  aux_weight: 0.1
+  n_freqs: 4
+
+  train_method: "linear_probe"
+
+training:
+  max_epochs: 30
+  lr_schedule: "cosine"
+  max_lr: 2e-4
+  min_lr: 2e-5
+  use_amp: true
