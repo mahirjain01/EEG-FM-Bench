@@ -2,7 +2,7 @@ model_type: cosine_split_mae
 fs: 200
 
 data:
-  batch_size: 16
+  batch_size: 8
   num_workers: 4
   datasets:
     motor_mv_img: finetune
@@ -13,15 +13,15 @@ data:
     bcic_2a: finetune
 
 logging:
-  experiment_name: "cosine_split_mae_eval"
-  run_dir: "/share/tmp/mahir/ckpts/runs/cosine_split_mae_eval"
+  experiment_name: "cosine_LayerNorm_split_mae_eval"
+  run_dir: "/home/neurodx/mahir/EEG-FM-Bench/cosine_LayerNorm_split_mae_eval"
   project: "eeg-fm-bench"
   use_cloud: false
   ckpt_interval: 0
 
 model:
-  pretrained_path: "/share/tmp/mahir/ckpts/cosine_split/cosine_split_15.pt"
-  source_mae_path: "/share/tmp/mahir/ckpts/cosine_split/mae_model.py"
+  pretrained_path: "/share/tmp/mahir/ckpts/cosineSplit_LayerNorm/mae_epoch_17.pt"
+  source_mae_path: "/share/tmp/mahir/att-mask-manas/models/mae_model.py"
   checkpoint_encoder_only: false
 
   fs: 200

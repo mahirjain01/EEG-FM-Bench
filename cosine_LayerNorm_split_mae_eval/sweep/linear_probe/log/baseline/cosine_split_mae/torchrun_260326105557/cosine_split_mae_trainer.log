@@ -1,0 +1,32 @@
+0:INFO    26-03-26 10:55:58.297 +00:00:06 - trainer.py:255 - log dir: /home/neurodx/mahir/EEG-FM-Bench/cosine_LayerNorm_split_mae_eval/sweep/linear_probe/log/baseline/cosine_split_mae/torchrun_260326105557, checkpoint dir: /home/neurodx/mahir/EEG-FM-Bench/cosine_LayerNorm_split_mae_eval/sweep/linear_probe/ckpt/baseline/cosine_split_mae/torchrun_260326105557
+0:INFO    26-03-26 10:55:58.297 +00:00:06 - trainer.py:257 - Starting cosine_split_mae training with 6 dataset(s): ['motor_mv_img', 'workload', 'hmc', 'siena_scalp', 'adftd', 'bcic_2a']
+0:INFO    26-03-26 10:55:58.297 +00:00:06 - trainer.py:1525 - Starting cosine_split_mae training with configuration:
+0:INFO    26-03-26 10:55:58.297 +00:00:06 - trainer.py:1526 -   - Datasets: 6 ['motor_mv_img', 'workload', 'hmc', 'siena_scalp', 'adftd', 'bcic_2a']
+0:INFO    26-03-26 10:55:58.298 +00:00:06 - trainer.py:1529 -   - Multitask: False
+0:INFO    26-03-26 10:55:58.298 +00:00:06 - trainer.py:1530 -   - Max epochs: 30
+0:INFO    26-03-26 10:55:58.298 +00:00:06 - trainer.py:1531 -   - Output directory: /home/neurodx/mahir/EEG-FM-Bench/cosine_LayerNorm_split_mae_eval/sweep/linear_probe/log/baseline/cosine_split_mae/torchrun_260326105557 -- /home/neurodx/mahir/EEG-FM-Bench/cosine_LayerNorm_split_mae_eval/sweep/linear_probe/ckpt/baseline/cosine_split_mae/torchrun_260326105557
+0:INFO    26-03-26 10:55:58.298 +00:00:06 - trainer.py:1540 - Using unified/multitask training pattern - single shared model
+0:INFO    26-03-26 10:55:58.307 +00:00:06 - trainer.py:1596 - Starting separate models training for 6 datasets
+0:INFO    26-03-26 10:55:58.307 +00:00:06 - trainer.py:1601 - Training dataset 1/6: motor_mv_img
+0:INFO    26-03-26 10:55:58.308 +00:00:06 - trainer.py:549 - Collecting dataset information for per dataset ...
+0:INFO    26-03-26 10:55:58.668 +00:00:06 - trainer.py:575 - Dataset motor_mv_img - finetune only
+0:INFO    26-03-26 10:56:01.887 +00:00:09 - trainer.py:662 - Creating single main training dataloader...
+0:INFO    26-03-26 10:56:02.642 +00:00:10 - adapter.py:73 - Added montage motor_mv_img/10_10 for dataset motor_mv_img: 64 channels
+0:INFO    26-03-26 10:56:02.643 +00:00:10 - adapter.py:80 - : Dataset Adapter analysis complete:
+0:INFO    26-03-26 10:56:02.643 +00:00:10 - adapter.py:81 -   - Total samples: 6210
+0:INFO    26-03-26 10:56:02.643 +00:00:10 - adapter.py:82 -   - Available montages: ['motor_mv_img/10_10']
+0:INFO    26-03-26 10:56:02.643 +00:00:10 - adapter.py:84 -   - motor_mv_img/10_10: 64 channels
+0:INFO    26-03-26 10:56:02.827 +00:00:10 - trainer.py:662 - Creating single main training dataloader...
+0:INFO    26-03-26 10:56:03.292 +00:00:11 - adapter.py:73 - Added montage motor_mv_img/10_10 for dataset motor_mv_img: 64 channels
+0:INFO    26-03-26 10:56:03.293 +00:00:11 - adapter.py:80 - : Dataset Adapter analysis complete:
+0:INFO    26-03-26 10:56:03.293 +00:00:11 - adapter.py:81 -   - Total samples: 1734
+0:INFO    26-03-26 10:56:03.293 +00:00:11 - adapter.py:82 -   - Available montages: ['motor_mv_img/10_10']
+0:INFO    26-03-26 10:56:03.293 +00:00:11 - adapter.py:84 -   - motor_mv_img/10_10: 64 channels
+0:INFO    26-03-26 10:56:03.370 +00:00:11 - trainer.py:662 - Creating single main training dataloader...
+0:INFO    26-03-26 10:56:03.559 +00:00:11 - adapter.py:73 - Added montage motor_mv_img/10_10 for dataset motor_mv_img: 64 channels
+0:INFO    26-03-26 10:56:03.559 +00:00:11 - adapter.py:80 - : Dataset Adapter analysis complete:
+0:INFO    26-03-26 10:56:03.559 +00:00:11 - adapter.py:81 -   - Total samples: 1893
+0:INFO    26-03-26 10:56:03.559 +00:00:11 - adapter.py:82 -   - Available montages: ['motor_mv_img/10_10']
+0:INFO    26-03-26 10:56:03.559 +00:00:11 - adapter.py:84 -   - motor_mv_img/10_10: 64 channels
+0:INFO    26-03-26 10:56:03.637 +00:00:11 - trainer.py:1630 - Per dataset training setup complete for motor_mv_img. 
+0:INFO    26-03-26 10:56:03.637 +00:00:11 - trainer.py:1631 - Starting 30 epochs...
