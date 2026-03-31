@@ -14,6 +14,7 @@ class ClassifierHeadType(str, Enum):
     ATTENTION_POOL = "attention_pool"          # Attention pooling with learnable query
     DUAL_STREAM_FUSION = "dual_stream_fusion"  # Dual stream attention fusion
     FLATTEN_MLP = "flatten_mlp"                # Flatten + Large
+    FLATTEN_LINEAR = "flatten_linear"          # Flatten + single linear
 
 
 class ClassifierHeadConfig(BaseModel):
@@ -36,8 +37,9 @@ class ClassifierHeadConfig(BaseModel):
     fusion_rope_theta: float = 10000.0
     fusion_max_seq_len: int = 1024
 
-    # Note: FLATTEN_MLP head uses fixed 3-layer structure based on dataset shape
-    # Layer structure: (n_ch * n_patches * dim) -> (n_patches * dim) -> dim -> n_class
+    # Note: flatten-based heads use dataset shape.
+    # FLATTEN_MLP: (n_ch * n_patches * dim) -> (n_patches * dim) -> dim -> n_class
+    # FLATTEN_LINEAR: (n_ch * n_patches * dim) -> n_class
 
 
 class BaseDataArgs(BaseModel):

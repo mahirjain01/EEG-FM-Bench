@@ -19,6 +19,7 @@ from baseline.abstract.classifier import MultiHeadClassifier, DynamicChannelConv
 from baseline.abstract.trainer import AbstractTrainer
 from baseline.biot.biot_config import BiotConfig, BiotModelArgs
 from baseline.biot.model import BIOTEncoder
+from baseline.utils.common import channel_percentile_normalize
 
 
 logger = logging.getLogger('baseline')
@@ -57,8 +58,9 @@ class BiotUnifiedModel(nn.Module):
         self.grad_cam_activation = None
         
     def forward(self, batch):
-        x = batch['data']  # Shape: (batch_size, n_channels, n_timepoints)
+        x = channel_percentile_normalize(batch['data'])
         montage = batch['montage'][0]  # Get montage from batch
+        ds_name = montage.split('/')[0]
 
         # trim data to times 200
         patch_size = self.encoder.n_fft

@@ -1,4 +1,41 @@
 #!/usr/bin/env python3
+"""
+EEGPT Trainer using Abstract Base Class
+
+A unified EEGPT trainer that inherits from AbstractTrainer and supports multiple training patterns:
+1. **Multitask Training** (multitask=True):
+   - Single shared model trained on mixed data from all datasets
+   - Multi-head classifier with separate heads for each dataset
+   - Efficient for learning shared representations across datasets
+
+2. **Separate Models Training** (multitask=False):
+   - Individual models trained separately for each dataset
+   - Each model starts from the same pretrained checkpoint
+   - Ideal for dataset-specific optimization and comparison studies
+
+Key Features:
+- Inherits from AbstractTrainer for consistency across baseline models
+- Automatic dataset mode detection - works seamlessly for single or multiple datasets
+- Multi-montage compatibility - automatically handles different channel montages
+- Dynamic classifier heads - separate heads for different datasets when needed
+- Distributed training support with proper metric calculation
+- Pure PyTorch implementation with efficient dataset-specific metrics
+- Dataset-specific checkpoint saving and logging
+
+Usage:
+    # Multitask training (default)
+    python baseline/eegpt/eegpt_trainer.py assets/conf/eegpt/eegpt_unified.yaml
+    
+    # Separate models training
+    python baseline/eegpt/eegpt_trainer.py assets/conf/eegpt/eegpt_separated.yaml
+
+Configuration:
+    multitask: bool = True         # Enable mixed training data
+    
+    # Training patterns:
+    # multitask=True  -> Multitask training (shared model)
+    # multitask=False -> Separate models training
+"""
 
 import logging
 import os
@@ -117,10 +154,14 @@ class EegptTrainer(AbstractTrainer):
         # Build ds_shape_info for FLATTEN_MLP head type
         # For EEGPT, shape is [T, 1, embed_dim * embed_num] where T = seq_len
         ds_shape_info = {}
+        patch_size = self.cfg.model.patch_size
         patch_stride = self.cfg.model.patch_stride
         for ds_name, info in self.ds_info.items():
             for montage_key, (n_timepoints, n_channels) in info['shape_info'].items():
-                seq_len = n_timepoints // patch_stride
+                if patch_stride is None:
+                    seq_len = n_timepoints // patch_size
+                else:
+                    seq_len = (n_timepoints - patch_size) // patch_stride + 1
                 ds_shape_info[montage_key] = (seq_len, self.cfg.model.embed_num, self.cfg.model.embed_dim)
 
         self.classifier = MultiHeadClassifier(
