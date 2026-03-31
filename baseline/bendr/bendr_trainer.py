@@ -10,7 +10,7 @@ import logging
 from typing import List
 
 import torch
-from torch import nn, Tensor
+from torch import nn
 from torch.nn import Conv1d
 from datasets import Dataset as HFDataset
 
@@ -19,15 +19,10 @@ from baseline.abstract.classifier import MultiHeadClassifier, DynamicChannelConv
 from baseline.abstract.trainer import AbstractTrainer
 from baseline.bendr.bendr_config import BendrConfig, BendrModelArgs
 from baseline.bendr.model.trainable.layers import BENDRContextualizer, ConvEncoderBENDR
+from baseline.utils.common import sequence_min_max_scale
 
 
 logger = logging.getLogger('baseline')
-
-
-def zscore(x: Tensor) -> Tensor:
-    mean = torch.mean(x, dim=(1, 2), keepdim=True)
-    std = torch.std(x, dim=(1, 2), keepdim=True)
-    return (x - mean) / std
 
 
 class BendrDataLoaderFactory(AbstractDataLoaderFactory):
@@ -70,9 +65,9 @@ class BendrUnifiedModel(nn.Module):
         self.grad_cam_activation = None
 
     def forward(self, batch):
-        x = batch['data'] * 0.001  # Shape: (batch_size, n_channels, n_timepoints)
-        # x = zscore(x)
+        x = sequence_min_max_scale(batch['data'])
         montage = batch['montage'][0]  # Get montage from batch
+        ds_name = montage.split('/')[0]
 
         data = self.conv_router(x, montage)
 
@@ -169,11 +164,11 @@ class BendrTrainer(AbstractTrainer):
         ds_shape_info = {}
         for ds_name, info in self.ds_info.items():
             for montage_key, (n_timepoints, n_channels) in info['shape_info'].items():
-                # Calculate reduced sequence length after BENDR encoder
-                # BENDR uses conv_stride (default: [5, 4]) for downsampling
-                seq_len_reduced = n_timepoints
-                for stride in model_cfg.conv_stride:
-                    seq_len_reduced = seq_len_reduced // stride
+                # Match ConvEncoderBENDR exactly: each stage uses ceil(length / stride).
+                seq_len_reduced = int(self.encoder.downsampling_factor(n_timepoints))
+                # BENDRContextualizer prepends one start token when start_token is not None.
+                if getattr(self.contextualizer, 'start_token', None) is not None:
+                    seq_len_reduced += 1
                 # C=1 since channel info is already combined by conv_router and encoder
                 ds_shape_info[montage_key] = (seq_len_reduced, 1, embed_dim)
         

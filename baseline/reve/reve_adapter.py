@@ -2,9 +2,11 @@ from typing import List, Dict, Any
 
 import torch
 from datasets import Dataset as HFDataset
+from torch import Tensor
 
 from baseline.abstract.adapter import AbstractDatasetAdapter, AbstractDataLoaderFactory
 from baseline.reve.pos_bank import RevePositionBank
+from baseline.utils.common import ZScoreNorm
 from common.utils import ElectrodeSet
 
 
@@ -22,6 +24,7 @@ class ReveDatasetAdapter(AbstractDatasetAdapter):
         self.pos_bank: RevePositionBank
         self.electrode_set: ElectrodeSet = ElectrodeSet()
         self.channel_restricted = channel_restricted
+        self.normalizer = ZScoreNorm()
         super().__init__(dataset, dataset_names, dataset_configs)
 
         self.pos_bank.load_state_dict(pos_bank_dict)
@@ -46,6 +49,7 @@ class ReveDatasetAdapter(AbstractDatasetAdapter):
     def _process_sample(self, sample: Dict[str, Any]) -> Dict[str, Any]:
         """Process a single sample including position encoding."""
         result = super()._process_sample(sample)
+        result['data'] = self.normalizer(result['data'])
 
         name_list = self.electrode_set.get_electrodes_name(result['chs'].tolist())
 

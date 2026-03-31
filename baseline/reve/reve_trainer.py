@@ -7,7 +7,6 @@ import torch
 from optimi import StableAdamW
 from torch import nn
 from torch.utils.data import DataLoader
-
 from baseline.abstract.classifier import MultiHeadClassifier
 from baseline.abstract.trainer import AbstractTrainer, format_console_log_dict
 from baseline.reve.model import Reve
@@ -241,12 +240,25 @@ class ReveTrainer(AbstractTrainer):
     def setup_optimizer_and_scheduler(self, model, train_loader: DataLoader):
         params = self.setup_optim_params(model)
 
-        optimizer = StableAdamW(
-            params,
-            betas=(self.cfg.training.adam_beta_1, self.cfg.training.adam_beta_2),
-            lr=self.cfg.training.max_lr,
-            eps=self.cfg.training.eps,
-        )
+        optimizer_name = getattr(self.cfg.training, 'optimizer_name', 'adamw').lower()
+        optimizer_kwargs = {
+            'params': params,
+            'betas': (self.cfg.training.adam_beta_1, self.cfg.training.adam_beta_2),
+            'lr': self.cfg.training.max_lr,
+            'eps': self.cfg.training.eps,
+        }
+
+        if optimizer_name == 'stableadamw':
+            optimizer = StableAdamW(**optimizer_kwargs)
+            logger.info("Using StableAdamW for REVE training")
+        elif optimizer_name == 'adamw':
+            optimizer = torch.optim.AdamW(**optimizer_kwargs)
+            logger.info("Using torch.optim.AdamW for REVE training")
+        else:
+            raise ValueError(
+                f"Unsupported REVE optimizer_name: {self.cfg.training.optimizer_name}. "
+                "Expected one of: ['adamw', 'stableadamw']."
+            )
 
         scaler = torch.amp.GradScaler(enabled=self.cfg.training.use_amp)
         

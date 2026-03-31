@@ -143,9 +143,13 @@ class CSBrainDatasetAdapter(AbstractDatasetAdapter):
         patch_size: int = 200,
     ):
         super().__init__(dataset, dataset_names, dataset_configs)
-        self.model_name = 'csbrain'
         self.electrode_set: ElectrodeSet = ElectrodeSet()
         self.patch_size = patch_size
+
+    def _setup_adapter(self):
+        self.model_name = 'csbrain'
+        self.scale = 0.01
+        super()._setup_adapter()
 
     def get_supported_channels(self) -> List[str]:
         """Return list of channels supported by CSBrain."""

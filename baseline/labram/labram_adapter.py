@@ -18,6 +18,7 @@ class LabramDatasetAdapter(AbstractDatasetAdapter):
     
     def _setup_adapter(self):
         self.model_name = 'labram'
+        self.scale = 0.01
         super()._setup_adapter()
 
     def get_supported_channels(self) -> List[str]:

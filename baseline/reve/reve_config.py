@@ -34,6 +34,8 @@ class ReveModelArgs(BaseModelArgs):
 class ReveTrainingArgs(BaseTrainingArgs):
     max_epochs: int = 50
 
+    optimizer_name: str = "adamw"
+
     lr_schedule: str = "reduce_on_plateau"
     eps: float = 1e-9
     warmup_epochs: int = 5

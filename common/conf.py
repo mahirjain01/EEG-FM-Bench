@@ -74,8 +74,8 @@ class BaseLogArgs(BaseModel):
     log_train_step_interval: int = 10
     log_valid_step_interval: int = 5
 
-    ckpt_epoch_interval: int = 1
-    ckpt_step_ratio_interval_epoch: float = 0.1
+    ckpt_epoch_interval: int = 5
+    ckpt_step_ratio_interval_epoch: float = 1.0
     save_scaling_ckpt: bool = False
 
     use_cloud: bool = True
@@ -156,8 +156,8 @@ class BaseFinetuneArgs(BaseModel):
     log_train_step_interval: int = 10
     log_valid_step_interval: int = 5
 
-    ckpt_epoch_interval: int = 1
-    ckpt_step_ratio_interval_epoch: float = 0.1
+    ckpt_epoch_interval: int = 5
+    ckpt_step_ratio_interval_epoch: float = 1.0
 
     checkpoint: Optional[str] = None
     datasets: dict[str, str] = Field(default_factory=lambda: {})

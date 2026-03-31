@@ -1,6 +1,7 @@
 """
 Classification heads for baseline models.
-Supports multiple classification head types: AVG_POOL, ATTENTION_POOL, DUAL_STREAM_FUSION, FLATTEN_MLP.
+Supports multiple classification head types: AVG_POOL, ATTENTION_POOL, DUAL_STREAM_FUSION,
+FLATTEN_MLP, FLATTEN_LINEAR.
 """
 
 from typing import Dict, Optional, Tuple
@@ -732,15 +733,67 @@ class FlattenMLPHead(nn.Module):
         Returns:
             logits: [B, n_class]
         """
-        b = x.shape[0]
+        b, t, c, d = x.shape
+        expected_tokens = self.n_patches * self.n_channels
+        actual_tokens = t * c
+
+        if actual_tokens != expected_tokens or d != self.dim:
+            raise ValueError(
+                "FlattenMLPHead input shape mismatch: "
+                f"expected [B, T*C={expected_tokens}, D={self.dim}] from ds_shape_info, "
+                f"got [B, T*C={actual_tokens}, D={d}] (raw x shape={tuple(x.shape)}). "
+                "Check dataset shape metadata and runtime transforms (e.g., dynamic channel/time routing)."
+            )
+
         # Flatten all dimensions: [B, T, C, D] -> [B, T*C*D]
-        x = x.contiguous().view(b, -1)
+        x = x.reshape(b, -1)
 
         if capture_features:
             return x
 
         logits = self.mlp(x)
         return logits
+
+
+class FlattenLinearHead(nn.Module):
+    """
+    Flatten linear classification head.
+    Flattens [B, T, C, D] to [B, T*C*D] and applies a single linear layer.
+    """
+
+    def __init__(
+            self,
+            n_patches: int,
+            n_channels: int,
+            dim: int,
+            n_class: int,
+    ):
+        super().__init__()
+        self.n_patches = n_patches
+        self.n_channels = n_channels
+        self.dim = dim
+        self.flatten_in_dim = n_channels * n_patches * dim
+        self.linear = nn.Linear(self.flatten_in_dim, n_class)
+
+    def forward(self, x: Tensor, capture_features: bool = False) -> Tensor:
+        b, t, c, d = x.shape
+        expected_tokens = self.n_patches * self.n_channels
+        actual_tokens = t * c
+
+        if actual_tokens != expected_tokens or d != self.dim:
+            raise ValueError(
+                "FlattenLinearHead input shape mismatch: "
+                f"expected [B, T*C={expected_tokens}, D={self.dim}] from ds_shape_info, "
+                f"got [B, T*C={actual_tokens}, D={d}] (raw x shape={tuple(x.shape)}). "
+                "Check dataset shape metadata and runtime transforms (e.g., dynamic channel/time routing)."
+            )
+
+        x = x.reshape(b, -1)
+
+        if capture_features:
+            return x
+
+        return self.linear(x)
 
 
 ###############################################################################
@@ -760,7 +813,7 @@ class MultiHeadClassifier(nn.Module):
     Supports multiple classification head types via configuration.
     All heads expect 4D input: [B, T, C, D]
     
-    For FLATTEN_MLP head type, heads are indexed by montage_key (e.g., 'tuab/01_tcp_ar')
+    For flatten-based head types, heads are indexed by montage_key (e.g., 'tuab/01_tcp_ar')
     because different montages have different shapes.
     For other head types, heads are indexed by ds_name (e.g., 'tuab').
     """
@@ -770,7 +823,7 @@ class MultiHeadClassifier(nn.Module):
             embed_dim: int,
             head_configs: Dict[str, int],  # {ds_name: n_class}
             head_cfg: ClassifierHeadConfig,
-            ds_shape_info: Optional[DatasetShapeInfo] = None,  # Required for FLATTEN_MLP
+            ds_shape_info: Optional[DatasetShapeInfo] = None,  # Required for flatten-based heads
             t_sne: bool = False,
     ):
         """
@@ -779,7 +832,7 @@ class MultiHeadClassifier(nn.Module):
             head_configs: Dict mapping ds_name -> n_classes
             head_cfg: Configuration for classification head type and parameters
             ds_shape_info: Dict mapping montage_key -> (n_timepoints, n_channels, embed_dim)
-                           Required for FLATTEN_MLP head type.
+                           Required for flatten-based head types.
                            Keys should be full montage keys like 'tuab/01_tcp_ar'.
             t_sne: Whether to capture features for t-SNE visualization
         """
@@ -790,15 +843,21 @@ class MultiHeadClassifier(nn.Module):
         self.ds_shape_info = ds_shape_info or {}  # {montage_key: (t, c, d)}
         self.t_sne = t_sne
 
-        # Validate FLATTEN_MLP requirement
-        if head_cfg.head_type == ClassifierHeadType.FLATTEN_MLP and not ds_shape_info:
-            raise ValueError("ds_shape_info is required for FLATTEN_MLP head type")
+        flatten_head_types = {
+            ClassifierHeadType.FLATTEN_MLP,
+            ClassifierHeadType.FLATTEN_LINEAR,
+        }
+        self._flatten_head_types = flatten_head_types
+
+        # Validate flatten-based head requirement
+        if head_cfg.head_type in self._flatten_head_types and not ds_shape_info:
+            raise ValueError("ds_shape_info is required for flatten-based head types")
 
         # Create separate classification heads
-        # For FLATTEN_MLP: indexed by montage_key (ds_name/montage_name)
+        # For flatten-based heads: indexed by montage_key (ds_name/montage_name)
         # For other types: indexed by ds_name
         self.heads = nn.ModuleDict()
-        if head_cfg.head_type == ClassifierHeadType.FLATTEN_MLP:
+        if head_cfg.head_type in self._flatten_head_types:
             # Create one head per montage_key
             for montage_key in ds_shape_info.keys():
                 ds_name = montage_key.split('/')[0]
@@ -861,6 +920,17 @@ class MultiHeadClassifier(nn.Module):
                 dropout=dropout,
             )
 
+        elif head_type == ClassifierHeadType.FLATTEN_LINEAR:
+            if head_name not in self.ds_shape_info:
+                raise ValueError(f"Shape info for dataset '{head_name}' not found in ds_shape_info")
+            n_patches, n_channels, embed_dim = self.ds_shape_info[head_name]
+            return FlattenLinearHead(
+                n_patches=n_patches,
+                n_channels=n_channels,
+                dim=embed_dim,
+                n_class=n_class,
+            )
+
         else:
             raise ValueError(f"Unknown head type: {head_type}")
 
@@ -875,8 +945,8 @@ class MultiHeadClassifier(nn.Module):
         Returns:
             logits: [B, n_class] for the specified head
         """
-        # For FLATTEN_MLP, use full montage_key; for others, extract ds_name
-        if self.head_cfg.head_type == ClassifierHeadType.FLATTEN_MLP:
+        # For flatten-based heads, use full montage_key; for others, extract ds_name
+        if self.head_cfg.head_type in self._flatten_head_types:
             head_name = montage
         else:
             head_name = montage.split('/')[0]  # Extract ds_name from montage
@@ -896,7 +966,7 @@ class MultiHeadClassifier(nn.Module):
     def add_head(self, head_name: str, n_class: int):
         """Add a new classification head.
         
-        For FLATTEN_MLP: head_name should be montage_key (e.g., 'tuab/01_tcp_ar')
+        For flatten-based heads: head_name should be montage_key (e.g., 'tuab/01_tcp_ar')
         For other types: head_name should be ds_name (e.g., 'tuab')
         """
         self.heads[head_name] = self._create_head(head_name, n_class)

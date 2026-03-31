@@ -9,7 +9,7 @@ from torch import nn
 
 def seed_torch(seed=1029):
     random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)  # Disable hash randomization for reproducibility
+    os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -86,3 +86,35 @@ class ZScoreNorm:
             std = x.std(dim=(-2, -1), keepdim=True)
 
         return (x - mean) / (std + self.eps)
+
+
+def sequence_min_max_scale(
+    x: torch.Tensor,
+    low: float = -1.0,
+    high: float = 1.0,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    if x.ndim < 2:
+        raise ValueError(f"Expected at least 2 dimensions, got shape {tuple(x.shape)}")
+
+    reduce_dims = tuple(range(1, x.ndim))
+    x_min = x.amin(dim=reduce_dims, keepdim=True)
+    x_max = x.amax(dim=reduce_dims, keepdim=True)
+    denom = (x_max - x_min).clamp_min(eps)
+    x = (x - x_min) / denom
+    x = x * (high - low) + low
+    return x
+
+
+def channel_percentile_normalize(
+    x: torch.Tensor,
+    percentile: float = 0.95,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    if x.ndim != 3:
+        raise ValueError(f"Expected shape (batch, channel, time), got {tuple(x.shape)}")
+
+    abs_x = x.abs()
+    scale = torch.quantile(abs_x, percentile, dim=-1, keepdim=True)
+    scale = scale.clamp_min(eps)
+    return x / scale
