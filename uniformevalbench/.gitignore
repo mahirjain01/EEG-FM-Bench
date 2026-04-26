@@ -1,6 +1,4 @@
-/home/neurodx/mahir/EVAL_PAPER/EEG-FM-Bench/uniformevalbench/experiments/logs
-/home/neurodx/mahir/EVAL_PAPER/EEG-FM-Bench/uniformevalbench/experiments/results
-/home/neurodx/mahir/EVAL_PAPER/EEG-FM-Bench/uniformevalbench/experiments/ckpts
+experiments/
 __pycache__/
 *.pyc
 *.pyo

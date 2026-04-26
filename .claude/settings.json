@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//mnt/eegfmbench/raw/**)",
+      "Read(//mnt/eegfmbench/**)",
+      "Bash(python3 uniformevalbench/experiments/spatial_priors.py)",
+      "Read(//mnt/**)",
+      "Bash(python3 -c ' *)",
+      "Read(//tmp/**)",
+      "Bash(nvidia-smi --query-gpu=index,memory.used,memory.free --format=csv,noheader)",
+      "Bash(python3 uniformevalbench/experiments/aggregate_axis_b_v2.py)",
+      "Bash(python3)"
+    ]
+  }
+}

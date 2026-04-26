@@ -4,6 +4,8 @@
 __pycache__/
 wandb
 
+/home/neurodx/mahir/EVAL_PAPER/EEG-FM-Bench/uniformevalbench/experiments
+
 .venv/
 .conda/
 env/
@@ -15,7 +17,6 @@ ENV/
 *.bak
 *$py.class
 data.lock
-*.pdf
 *.pt
 *.ckpt
 *.pth
