@@ -32,21 +32,21 @@ from ..model_adapter import ModelAdapter
 # ---------------------------------------------------------------------------
 
 _CONFIG_MAP: dict[str, tuple[str, str]] = {
-    "eegpt":   ("baseline.eegpt.eegpt_config",    "EegptConfig"),
-    "labram":  ("baseline.labram.labram_config",   "LabramConfig"),
-    "biot":    ("baseline.biot.biot_config",       "BiotConfig"),
-    "cbramod": ("baseline.cbramod.cbramod_config", "CBraModConfig"),
-    "csbrain": ("baseline.csbrain.csbrain_config", "CSBrainConfig"),
-    "reve":    ("baseline.reve.reve_config",       "ReveConfig"),
+    "eegpt":   ("uniformevalbench.models.eegpt.eegpt_config",    "EegptConfig"),
+    "labram":  ("uniformevalbench.models.labram.labram_config",   "LabramConfig"),
+    "biot":    ("uniformevalbench.models.biot.biot_config",       "BiotConfig"),
+    "cbramod": ("uniformevalbench.models.cbramod.cbramod_config", "CBraModConfig"),
+    "csbrain": ("uniformevalbench.models.csbrain.csbrain_config", "CSBrainConfig"),
+    "reve":    ("uniformevalbench.models.reve.reve_config",       "ReveConfig"),
 }
 
 _TRAINER_MAP: dict[str, tuple[str, str]] = {
-    "eegpt":   ("baseline.eegpt.eegpt_trainer",       "EegptTrainer"),
-    "labram":  ("baseline.labram.labram_trainer",      "LabramTrainer"),
-    "biot":    ("baseline.biot.biot_trainer",          "BiotTrainer"),
-    "cbramod": ("baseline.cbramod.cbramod_trainer",    "CBraModTrainer"),
-    "csbrain": ("baseline.csbrain.csbrain_trainer",    "CSBrainTrainer"),
-    "reve":    ("baseline.reve.reve_trainer",          "REVETrainer"),
+    "eegpt":   ("uniformevalbench.models.eegpt.eegpt_trainer",       "EegptTrainer"),
+    "labram":  ("uniformevalbench.models.labram.labram_trainer",      "LabramTrainer"),
+    "biot":    ("uniformevalbench.models.biot.biot_trainer",          "BiotTrainer"),
+    "cbramod": ("uniformevalbench.models.cbramod.cbramod_trainer",    "CBraModTrainer"),
+    "csbrain": ("uniformevalbench.models.csbrain.csbrain_trainer",    "CSBrainTrainer"),
+    "reve":    ("uniformevalbench.models.reve.reve_trainer",          "REVETrainer"),
 }
 
 # ---------------------------------------------------------------------------

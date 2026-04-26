@@ -32,7 +32,7 @@ from scipy.spatial.distance import jensenshannon
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from common.utils import ElectrodeSet
+from uniformevalbench.utils import ElectrodeSet
 from uniformevalbench.adapters._viz_bridge import _build_trainer, _get_model
 
 from spatial_priors import get_prior
