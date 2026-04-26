@@ -1,0 +1,13 @@
+# BIOT model architecture defaults for UniformEvalBench
+# Note: use_amp must be false — BIOT's STFT (cuFFT) cannot run in bf16
+classifier_head:
+  head_type: avg_pool
+  hidden_dims: [128]
+  dropout: 0.3
+emb_size: 256
+heads: 8
+depth: 4
+max_channels: 18
+n_fft: 200
+hop_length: 100
+use_channel_conv: true

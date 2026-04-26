@@ -1,0 +1,53 @@
+seed: 42
+master_port: 52070
+multitask: false
+model_type: cbramod
+fs: 200
+data:
+  batch_size: 32
+  num_workers: 4
+  datasets:
+    workload: finetune
+model:
+  classifier_head:
+    head_type: avg_pool
+    hidden_dims:
+    - 128
+    dropout: 0.3
+  in_dim: 200
+  out_dim: 200
+  d_model: 200
+  dim_ffn: 800
+  n_layer: 12
+  n_head: 8
+  dropout_rate: 0.1
+  pretrained_path: /mnt/eegfmbench/FM_checkpoints/cbramod/pretrained_weights.pth
+training:
+  max_epochs: 30
+  weight_decay: 0.01
+  max_grad_norm: 3.0
+  lr_schedule: cosine
+  max_lr: 0.0005
+  encoder_lr_scale: 0.1
+  warmup_epochs: 2
+  warmup_scale: 0.01
+  pct_start: 0.2
+  min_lr: 1.0e-06
+  freeze_encoder: true
+  use_amp: true
+  label_smoothing: 0.1
+  lora:
+    use_lora: false
+logging:
+  experiment_name: b3_cbramod_workload_s42_p025
+  run_dir: /mnt/eegfmbench/runs/uniformeval/axis_b_v3
+  use_cloud: false
+  project: uniformevalbench
+  offline: true
+  tags:
+  - pilot
+  - cbramod
+  - lp
+  - workload
+  log_step_interval: 50
+  ckpt_interval: 30

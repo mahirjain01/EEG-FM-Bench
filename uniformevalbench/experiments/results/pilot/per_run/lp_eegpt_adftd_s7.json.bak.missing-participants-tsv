@@ -1,0 +1,15 @@
+{
+  "experiment_id": "lp_eegpt_adftd_s7",
+  "model": "eegpt",
+  "dataset": "adftd",
+  "seed": 7,
+  "mode": "lp",
+  "status": "failed",
+  "return_code": 1,
+  "wall_time_sec": 14.2,
+  "timestamp": "2026-04-19T03:43:07.052177",
+  "config_path": "/home/neurodx/mahir/EVAL_PAPER/EEG-FM-Bench/uniformevalbench/experiments/configs/pilot_generated/lp_eegpt_adftd_s7.yaml",
+  "log_path": "/home/neurodx/mahir/EVAL_PAPER/EEG-FM-Bench/uniformevalbench/experiments/logs/lp_eegpt_adftd_s7.log",
+  "test_metrics": null,
+  "eval_metrics": null
+}

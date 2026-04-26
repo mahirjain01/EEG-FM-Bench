@@ -39,7 +39,7 @@ class VisArgs(BaseModel):
 class IntegratedGradientsVisArgs(VisArgs):
     # IntegratedGradients parameters
     n_steps: int = 50
-    baseline_type: str = 'random'  # 'zero', 'random', 'gaussian'
+    baseline_type: str = 'random'  # 'zero', 'random', 'gaussian', 'mean', 'phase_shuffled'
     ig_target: str = 'channel'  # channel or temporal
     
     # NoiseTunnel parameters

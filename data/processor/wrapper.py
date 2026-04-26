@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from datasets import Dataset, concatenate_datasets, Value
 
 from data.dataset.adftd import AdftdBuilder
+from data.dataset.epilepsy_mimickers import EpilepsyMimickersBuilder
 from data.dataset.bcic.bcic_1a import BCIC1ABuilder
 from data.dataset.bcic.bcic_2020_3 import BCIC2020ImagineBuilder
 from data.dataset.bcic.bcic_2a import BCIC2ABuilder
@@ -79,6 +80,7 @@ DATASET_SELECTOR: dict[str, Type[EEGDatasetBuilder]] = {
     'workload': WorkloadBuilder,
     'hbn': HBNBuilder,
     'adftd': AdftdBuilder,
+    'epilepsy_mimickers': EpilepsyMimickersBuilder,
     'brain_lat': BrainLatBuilder,
     'things_eeg': ThingsEEGBuilder,
     'things_eeg_2': ThingsEEG2Builder,

@@ -81,6 +81,11 @@ class AdftdBuilder(EEGDatasetBuilder):
     def _load_meta_info(self):
         # noinspection PyTypeChecker
         csv_path: str = os.path.join(self.config.raw_path, self.config.scan_sub_dir, 'participants.tsv')
+        if not os.path.exists(csv_path):
+            # Raw BIDS metadata not available (e.g., loading from pre-processed parquet).
+            # Leave sub_meta empty; downstream uses only hit sub_meta during preprocessing.
+            self.sub_meta: DataFrame = pd.DataFrame()
+            return
         df = pd.read_csv(csv_path, sep='\t')
 
         self.sub_meta: DataFrame = df

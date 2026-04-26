@@ -1,0 +1,9 @@
+0:INFO    26-04-22 17:36:59.670 +00:00:00 - builder.py:406 - fs_200/epilepsy_mimickers/pretrain summary cache cleared.
+0:INFO    26-04-22 17:36:59.670 +00:00:00 - builder.py:378 - fs_200/epilepsy_mimickers/pretrain mid cache cleared.
+0:INFO    26-04-22 17:36:59.671 +00:00:00 - builder.py:419 - fs_200/epilepsy_mimickers/pretrain all disk cache cleared.
+0:INFO    26-04-22 17:36:59.671 +00:00:00 - builder.py:406 - fs_200/epilepsy_mimickers/pretrain summary cache cleared.
+0:INFO    26-04-22 17:36:59.671 +00:00:00 - builder.py:378 - fs_200/epilepsy_mimickers/pretrain mid cache cleared.
+0:INFO    26-04-22 17:36:59.671 +00:00:00 - builder.py:419 - fs_200/epilepsy_mimickers/pretrain all disk cache cleared.
+0:INFO    26-04-22 17:36:59.678 +00:00:00 - builder.py:1048 - Run _gather_files parallel in 8 processes with chunksize 1
+0:INFO    26-04-22 17:37:00.904 +00:00:01 - builder.py:1048 - Run _check_montage_single_file parallel in 8 processes with chunksize 1
+0:INFO    26-04-22 17:37:02.887 +00:00:03 - builder.py:1048 - Run _persist_example_file parallel in 8 processes with chunksize 1

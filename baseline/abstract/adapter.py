@@ -2,6 +2,7 @@
 Abstract adapter base class for baseline models.
 """
 
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, List, Union, Any
 import logging
@@ -17,6 +18,33 @@ from common.distributed.loader import DistributedGroupBatchSampler
 logger = logging.getLogger('baseline')
 
 
+# Axis B corruption hook: when these env vars are set, __getitem__ applies the
+# requested corruption to every sample's raw (n_channels, n_timepoints) data
+# BEFORE it reaches the model-specific `_process_sample`. This is strictly
+# pre-adapter: the model's channel adapter sees the corrupted signal exactly as
+# it would if electrodes had failed or artifacts had appeared upstream.
+#
+#   UE_CHANNEL_DROPOUT_P      float in [0,1) — fraction of channels to zero
+#   UE_CHANNEL_DROPOUT_SEED   int offset; combined with sample idx for reproducibility
+#
+# No env var set → no corruption (default).
+def _axis_b_apply_channel_dropout(raw_data: torch.Tensor, idx: int) -> torch.Tensor:
+    p = float(os.environ.get('UE_CHANNEL_DROPOUT_P', '0.0'))
+    if p <= 0.0:
+        return raw_data
+    n_ch = raw_data.shape[0]
+    n_drop = int(n_ch * p)
+    if n_drop <= 0:
+        return raw_data
+    base_seed = int(os.environ.get('UE_CHANNEL_DROPOUT_SEED', '0'))
+    g = torch.Generator()
+    g.manual_seed(base_seed + int(idx))
+    drop_idx = torch.randperm(n_ch, generator=g)[:n_drop]
+    raw_data = raw_data.clone()
+    raw_data[drop_idx] = 0.0
+    return raw_data
+
+
 class AbstractDatasetAdapter(Dataset, ABC):
     """Abstract base adapter for dataset processing."""
     
@@ -28,6 +56,11 @@ class AbstractDatasetAdapter(Dataset, ABC):
         self.montage_mappings = {}
 
         self.scale = 1.0
+
+        # Axis B split tag — "train" | "validation" | "test" — set by the factory
+        # after construction. Used with UE_TEST_ONLY_DROPOUT=1 to restrict pre-adapter
+        # channel dropout to non-training splits only.
+        self._ue_split: str = 'unknown'
 
         self._setup_adapter()
     
@@ -138,8 +171,26 @@ class AbstractDatasetAdapter(Dataset, ABC):
     def __getitem__(self, idx: Union[int, torch.Tensor]) -> Dict[str, Union[torch.Tensor, str, List[str], int]]:
         if isinstance(idx, torch.Tensor):
             idx = int(idx.item())
-        
+
         sample = self.dataset[idx]
+
+        # Axis B pre-adapter channel dropout (env-var gated, no-op by default).
+        # If UE_TEST_ONLY_DROPOUT=1, dropout is applied on the test split only.
+        # Validation remains clean so best-val epoch selection is unaffected by p.
+        # This is the v3 protocol: train clean, validate clean, test corrupted.
+        if 'UE_CHANNEL_DROPOUT_P' in os.environ and 'data' in sample:
+            test_only = os.environ.get('UE_TEST_ONLY_DROPOUT', '0') == '1'
+            apply_here = (not test_only) or (self._ue_split == 'test')
+            if apply_here:
+                raw = sample['data']
+                if not isinstance(raw, torch.Tensor):
+                    raw = torch.as_tensor(raw, dtype=torch.float32)
+                else:
+                    raw = raw.float()
+                raw = _axis_b_apply_channel_dropout(raw, idx)
+                sample = dict(sample)  # shallow copy to avoid mutating the cached HF sample
+                sample['data'] = raw
+
         return self._process_sample(sample)
     
     @abstractmethod
@@ -205,6 +256,12 @@ class AbstractDataLoaderFactory(ABC):
             dataset_names=dataset_names,
             dataset_configs=config_names
         )
+        # Tag the adapter with its split so the Axis B v2 test-only dropout hook
+        # can suppress corruption during training loaders.
+        try:
+            adapter._ue_split = str(split).lower() if split is not None else 'unknown'
+        except Exception:
+            pass
 
         sampler = DistributedGroupBatchSampler(
             dataset=combined_dataset,

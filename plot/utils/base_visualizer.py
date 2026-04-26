@@ -521,6 +521,18 @@ class BaseVisualizer(ABC):
             return torch.rand_like(input_tensor) * 300 - 150
         elif self.vis_args.baseline_type == 'gaussian':
             return torch.randn_like(input_tensor) * input_tensor.std() + input_tensor.mean()
+        elif self.vis_args.baseline_type == 'mean':
+            # Per-batch mean signal: each sample replaced with the batch mean waveform.
+            # Preserves spectral shape of the average EEG; removes sample-specific deviations.
+            return input_tensor.mean(dim=0, keepdim=True).expand_as(input_tensor).clone()
+        elif self.vis_args.baseline_type == 'phase_shuffled':
+            # Phase-shuffled baseline: preserve per-channel magnitude spectrum, randomize phase.
+            # Principled EEG baseline: destroys temporal structure while preserving spectral power.
+            X = torch.fft.rfft(input_tensor.float(), dim=-1)
+            rand_phase = torch.rand_like(X.real) * (2 * torch.pi)
+            X_shuffled = X.abs() * torch.polar(torch.ones_like(X.abs()), rand_phase)
+            shuffled = torch.fft.irfft(X_shuffled, n=input_tensor.shape[-1], dim=-1)
+            return shuffled.to(dtype=input_tensor.dtype)
         else:
             raise ValueError(f"Unsupported baseline type: {self.vis_args.baseline_type}")
 

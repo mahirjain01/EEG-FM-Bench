@@ -14,7 +14,7 @@ import torch
 from torch import nn
 from datasets import Dataset as HFDataset
 
-from baseline.abstract.adapter import AbstractDataLoaderFactory
+from baseline.abstract.adapter import AbstractDataLoaderFactory, AbstractDatasetAdapter
 from baseline.abstract.classifier import MultiHeadClassifier, DynamicChannelConvRouter
 from baseline.abstract.trainer import AbstractTrainer
 from baseline.biot.biot_config import BiotConfig, BiotModelArgs
@@ -25,6 +25,31 @@ from baseline.utils.common import channel_percentile_normalize
 logger = logging.getLogger('baseline')
 
 
+class BiotDatasetAdapter(AbstractDatasetAdapter):
+    """Thin wrapper that routes BIOT data through AbstractDatasetAdapter.__getitem__.
+
+    BIOT's channel mapping and STFT happen inside BiotUnifiedModel.forward(), so
+    the adapter itself is a pass-through. The only reason this class exists is so
+    that the Axis B pre-adapter channel-dropout hook (in __getitem__) fires for
+    BIOT the same way it does for every other model.  Previously,
+    BiotDataLoaderFactory.create_adapter() returned the raw HFDataset, which
+    bypassed __getitem__ entirely and made BIOT's CDR flat at 1.0 regardless of p.
+    """
+
+    def _setup_adapter(self) -> None:
+        # BIOT does not use montage mappings in the adapter — channel routing is
+        # handled by DynamicChannelConvRouter in the model forward.
+        pass
+
+    def get_supported_channels(self) -> List[str]:
+        return []
+
+    def _process_sample(self, sample):
+        # Pass through unchanged; BiotUnifiedModel.forward() reads batch['data']
+        # directly after the adapter delivers it.
+        return sample
+
+
 class BiotDataLoaderFactory(AbstractDataLoaderFactory):
     """BIOT DataLoader factory that inherits from AbstractDataLoaderFactory."""
 
@@ -33,8 +58,8 @@ class BiotDataLoaderFactory(AbstractDataLoaderFactory):
             dataset: HFDataset,
             dataset_names: List[str],
             dataset_configs: List[str]
-    ) -> HFDataset:
-        return dataset
+    ) -> BiotDatasetAdapter:
+        return BiotDatasetAdapter(dataset, dataset_names, dataset_configs)
 
 
 class BiotUnifiedModel(nn.Module):
