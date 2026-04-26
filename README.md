@@ -228,6 +228,21 @@ python preproc.py conf_file=preproc/preproc_example.yaml
 # Fine-Tuning (examples for different models)
 python baseline_main.py conf_file=baseline/eegpt/eegpt_unified.yaml model_type=eegpt
 
+# Sweep a split-training model over all configured datasets with both
+# linear probing and full finetuning in one command
+python baseline_main.py conf_file=configs/manas.yaml sweep=true
+
+# Run the three split-model sweeps in sequence
+./scripts/run_split_sweeps.sh
+
+# Optional: override the sweep methods explicitly
+python baseline_main.py conf_file=configs/manas.yaml sweep=true \
+  sweep_methods=linear_probe,full_finetune
+
+# Optional: pass a custom config list or override the python binary/methods
+PYTHON_BIN=python3 SWEEP_METHODS=linear_probe,full_finetune \
+  ./scripts/run_split_sweeps.sh configs/manas.yaml configs/ndx_mae.yaml
+
 # List model types supported by the unified entrypoint
 python baseline_main.py list-models
 ```

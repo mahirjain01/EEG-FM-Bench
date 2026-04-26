@@ -2,11 +2,13 @@ from baseline.abstract.factory import ModelRegistry
 from baseline.cbramod.cbramod_adapter import CBraModDataLoaderFactory
 from baseline.cbramod.cbramod_config import CBraModConfig
 from baseline.cbramod.cbramod_trainer import CBraModTrainer
+
 # from baseline.conformer.conformer_config import ConformerConfig
 # from baseline.conformer.conformer_trainer import ConformerTrainer
 from baseline.csbrain.csbrain_adapter import CSBrainDataLoaderFactory
 from baseline.csbrain.csbrain_config import CSBrainConfig
 from baseline.csbrain.csbrain_trainer import CSBrainTrainer
+
 # from baseline.eegnet.eegnet_config import EegNetConfig
 # from baseline.eegnet.eegnet_trainer import EegNetTrainer
 from baseline.eegpt.eegpt_adapter import EegptDataLoaderFactory
@@ -24,54 +26,84 @@ from baseline.moment import MomentConfig, MomentDataLoaderFactory, MomentTrainer
 from baseline.reve.reve_adapter import ReveDataLoaderFactory
 from baseline.reve.reve_config import ReveConfig
 from baseline.reve.reve_trainer import ReveTrainer
+from baseline.manas.manas_adapter import MANASDataLoaderFactory
+from baseline.manas.manas_config import MANASConfig
+from baseline.manas.manas_trainer import MANASTrainer
+from baseline.ndx_mae_linear_split.ndx_mae_config import NdxMAEConfig
+from baseline.ndx_mae_linear_split.ndx_mae_trainer import NdxMAETrainer
+from baseline.cosine_split_mae.cosine_split_mae_config import CosineSplitMAEConfig
+from baseline.cosine_split_mae.cosine_split_mae_trainer import (
+    CosineSplitMAETrainer,
+)
 
 ModelRegistry.register_model(
-    model_type='eegpt',
+    model_type="MANAS",
+    config_class=MANASConfig,
+    adapter_class=MANASDataLoaderFactory,
+    trainer_class=MANASTrainer,
+)
+
+ModelRegistry.register_model(
+    model_type="ndx_mae",
+    config_class=NdxMAEConfig,
+    adapter_class=MANASDataLoaderFactory,
+    trainer_class=NdxMAETrainer,
+)
+
+ModelRegistry.register_model(
+    model_type="cosine_split_mae",
+    config_class=CosineSplitMAEConfig,
+    adapter_class=MANASDataLoaderFactory,
+    trainer_class=CosineSplitMAETrainer,
+)
+
+ModelRegistry.register_model(
+    model_type="eegpt",
     config_class=EegptConfig,
     adapter_class=EegptDataLoaderFactory,
-    trainer_class=EegptTrainer
+    trainer_class=EegptTrainer,
 )
 
 ModelRegistry.register_model(
-    model_type='labram',
+    model_type="labram",
     config_class=LabramConfig,
     adapter_class=LabramDataLoaderFactory,
-    trainer_class=LabramTrainer
+    trainer_class=LabramTrainer,
 )
 
 ModelRegistry.register_model(
-    model_type='bendr',
+    model_type="bendr",
     config_class=BendrConfig,
     adapter_class=None,
-    trainer_class=BendrTrainer
+    trainer_class=BendrTrainer,
 )
 
 ModelRegistry.register_model(
-    model_type='biot',
+    model_type="biot",
     config_class=BiotConfig,
     adapter_class=None,
-    trainer_class=BiotTrainer
+    trainer_class=BiotTrainer,
 )
 
 ModelRegistry.register_model(
-    model_type='cbramod',
+    model_type="cbramod",
     config_class=CBraModConfig,
     adapter_class=CBraModDataLoaderFactory,
-    trainer_class=CBraModTrainer
+    trainer_class=CBraModTrainer,
 )
 
 ModelRegistry.register_model(
-    model_type='reve',
+    model_type="reve",
     config_class=ReveConfig,
     adapter_class=ReveDataLoaderFactory,
-    trainer_class=ReveTrainer
+    trainer_class=ReveTrainer,
 )
 
 ModelRegistry.register_model(
-    model_type='csbrain',
+    model_type="csbrain",
     config_class=CSBrainConfig,
     adapter_class=CSBrainDataLoaderFactory,
-    trainer_class=CSBrainTrainer
+    trainer_class=CSBrainTrainer,
 )
 
 # ModelRegistry.register_model(
@@ -89,15 +121,15 @@ ModelRegistry.register_model(
 # )
 
 ModelRegistry.register_model(
-    model_type='mantis',
+    model_type="mantis",
     config_class=MantisConfig,
     adapter_class=MantisDataLoaderFactory,
-    trainer_class=MantisTrainer
+    trainer_class=MantisTrainer,
 )
 
 ModelRegistry.register_model(
-    model_type='moment',
+    model_type="moment",
     config_class=MomentConfig,
     adapter_class=MomentDataLoaderFactory,
-    trainer_class=MomentTrainer
+    trainer_class=MomentTrainer,
 )

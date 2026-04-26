@@ -1,0 +1,62 @@
+model_type: cosine_split_mae
+fs: 200
+
+data:
+  batch_size: 8
+  num_workers: 4
+  datasets:
+    motor_mv_img: finetune
+    workload: finetune
+    hmc: finetune
+    siena_scalp: finetune
+    adftd: finetune
+    bcic_2a: finetune
+
+logging:
+  experiment_name: "cosine_LayerNorm_split_mae_eval"
+  run_dir: "/home/neurodx/mahir/EEG-FM-Bench/cosine_LayerNorm_split_mae_eval"
+  project: "eeg-fm-bench"
+  use_cloud: false
+  ckpt_interval: 0
+
+model:
+  pretrained_path: "/share/tmp/mahir/ckpts/cosineSplit_LayerNorm/mae_epoch_17.pt"
+  source_mae_path: "/share/tmp/mahir/att-mask-manas/models/mae_model.py"
+  checkpoint_encoder_only: false
+
+  fs: 200
+  patch_seconds: 1.0
+  overlap_seconds: 0.1
+  embed_dim: 512
+  encoder_depth: 22
+  encoder_heads: 8
+  decoder_depth: 4
+  decoder_heads: 8
+
+  mask_ratio: 0.55
+  aux_loss_weight: 0.1
+  which_mask: "default"
+  fuzzy_noise_std: 0.0
+  spatial_radius_black: 3.0
+  spatial_radius_fuzzy: 4.0
+  temporal_radius_black: 3.0
+  temporal_radius_fuzzy: 4.0
+  dropout_ratio: 0.1
+  dropout_radius: 3.0
+  ema_mix_ratio: 0.6
+  ema_temperature: 2.0
+  ema_floor_eps: 0.1
+
+  use_pairwise_channel_diffs: false
+  n_spatial_coords: 3
+  posenc_n_freqs: 4
+  sigma_noise: 0.25
+
+  train_method: "linear_probe"
+
+training:
+  max_epochs: 30
+  lr_schedule: "cosine"
+  max_lr: 2e-4
+  min_lr: 2e-5
+  use_amp: true
