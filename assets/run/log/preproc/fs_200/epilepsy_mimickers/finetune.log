@@ -1,0 +1,9 @@
+0:INFO    26-04-22 17:37:26.925 +00:00:00 - builder.py:406 - fs_200/epilepsy_mimickers/finetune summary cache cleared.
+0:INFO    26-04-22 17:37:26.926 +00:00:00 - builder.py:378 - fs_200/epilepsy_mimickers/finetune mid cache cleared.
+0:INFO    26-04-22 17:37:26.926 +00:00:00 - builder.py:419 - fs_200/epilepsy_mimickers/finetune all disk cache cleared.
+0:INFO    26-04-22 17:37:26.926 +00:00:00 - builder.py:406 - fs_200/epilepsy_mimickers/finetune summary cache cleared.
+0:INFO    26-04-22 17:37:26.926 +00:00:00 - builder.py:378 - fs_200/epilepsy_mimickers/finetune mid cache cleared.
+0:INFO    26-04-22 17:37:26.926 +00:00:00 - builder.py:419 - fs_200/epilepsy_mimickers/finetune all disk cache cleared.
+0:INFO    26-04-22 17:37:26.932 +00:00:00 - builder.py:1048 - Run _gather_files parallel in 8 processes with chunksize 1
+0:INFO    26-04-22 17:37:28.711 +00:00:01 - builder.py:1048 - Run _check_montage_single_file parallel in 8 processes with chunksize 1
+0:INFO    26-04-22 17:37:30.771 +00:00:03 - builder.py:1048 - Run _persist_example_file parallel in 8 processes with chunksize 1

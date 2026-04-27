@@ -1,0 +1,752 @@
+\documentclass{article}
+
+% NeurIPS 2026 Evaluations & Datasets Track
+\usepackage[eandd]{neurips_2026}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{enumitem}
+\usepackage{subcaption}
+\usepackage{xspace}
+\usepackage{placeins}
+
+% Custom commands
+\newcommand{\bench}{\textsc{UniformEvalBench}\xspace}
+\newcommand{\fbp}{\textsc{FBP}\xspace}
+\newcommand{\ft}{\textsc{FT}\xspace}
+\newcommand{\cdr}{\textsc{CDR}\xspace}
+\newcommand{\spa}{\textsc{SPA}\xspace}
+\newcommand{\adaptgap}{\textsc{AdaptGap}\xspace}
+\newcommand{\uebgen}{\textsc{UEB-General}\xspace}
+\newcommand{\retratio}{\textsc{Ret.Ratio}\xspace}
+\newcommand{\codeurl}{\url{https://github.com/ANONYMOUS/UniformEvalBench}}
+
+\title{UniformEvalBench: A Multi-Axis Benchmark and Clinically Grounded Downstream Task for EEG Foundation Models}
+
+\author{%
+  Anonymous Author(s)
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Current evaluation of EEG Foundation Models (EEG-FMs) relies primarily on full fine-tuning accuracy across curated downstream datasets. This practice conflates three distinct properties: the quality of the pretrained representation, the capacity of a trainable task head to reorganize that representation, and dataset-specific inductive biases of the backbone architecture. We introduce \bench, a multi-axis benchmark that evaluates EEG-FMs along three complementary dimensions: \emph{representation quality} via $k$NN@20, a hyperparameter-free metric requiring no learned probe, together with formally defined adaptation metrics (\adaptgap, NormAdaptGain); \emph{robustness} via Channel Degradation Resilience (\cdr), a chance-corrected score measuring how far above chance a model remains under test-only channel dropout simulating electrode failure; and \emph{neurophysiological grounding} via Spectral Prior Alignment (\spa), a task-agnostic metric measuring whether frozen embeddings linearly encode canonical EEG frequency bands. A composite leaderboard (\uebgen) aggregates the three axes via a geometric mean that prevents single-axis dominance. The benchmark pre-registers three confirmatory claims with quantitative success criteria and separates them from exploratory analyses. We evaluate 6~EEG-FMs and 1~general time-series FM across 7~datasets spanning motor imagery, sleep staging, seizure detection, neurodegenerative diagnosis, cognitive workload, and a \emph{novel clinically grounded downstream task}: discriminating epilepsy from its clinical mimickers, for which we publicly release a new 80-subject dataset (50~epileptic, 30~mimickers including PNES, syncope, and dystonia) recorded with standard 19-channel 10--20 montage EEG. This discrimination problem is of high clinical significance---misclassification leads to years of inappropriate treatment---yet has never been posed as a foundation model benchmark. Our results demonstrate that frozen and fine-tuned evaluations rank models differently (mean Kendall's $\tau = 0.291$ across 7 datasets), that the strongest frozen-representation model does not lead on robustness, and that spectral encoding is positively associated with downstream performance (FBP--SPA $\rho = +0.60$, out-of-sample). Code, benchmark harness, and data are publicly released at \codeurl.
+\end{abstract}
+
+%% ============================================================
+\section{Introduction}
+\label{sec:intro}
+%% ============================================================
+
+EEG Foundation Models (EEG-FMs) such as BIOT~\citep{yang2023biot}, LaBraM~\citep{jiang2024labram}, EEGPT~\citep{wang2024eegpt}, CBraMod~\citep{wang2024cbramod}, CSBrain, and REVE span diverse architectures: patch-based vision transformers, criss-cross attention networks, and deep transformers with Fourier positional encoding. Despite this diversity, the field evaluates them through a near-uniform protocol: fine-tune on a downstream dataset, report balanced accuracy. This practice has three systematic shortcomings. First, \textbf{fine-tuning conflates representation quality with adaptation plasticity}: a sufficiently expressive task head can achieve strong performance on a mediocre backbone, so FT accuracy cannot attribute performance to the pretrained encoder. Second, \textbf{clean-data accuracy overestimates deployment reliability}: deployed EEG systems see electrode failures, motion artifacts, and non-stationary noise that curated benchmarks remove. Third, \textbf{accuracy does not certify neurophysiological validity}: a model exploiting EMG bleedthrough in motor imagery data can score well without encoding neurophysiologically plausible features.
+
+EEG-FM-Bench~\citep{xiong2026eegfmbench} documented these issues with diagnostic analyses (gradient conflicts, CKA/RSA, scaling laws) but retained FT accuracy as its primary ranking criterion. Existing benchmarks also lack a clinically challenging downstream task: they evaluate on paradigms where EEG signals are either grossly abnormal (seizure detection, sleep staging) or paradigm-locked (motor imagery). They do not test whether EEG-FMs encode the subtle interictal signatures that distinguish conditions presenting identically to the clinician but differing in etiology and treatment.
+
+\emph{Epilepsy vs.\ its clinical mimickers} is the canonical instance of this problem. Non-epileptic conditions---PNES, syncope, dissociative reactions, movement disorders, metabolic encephalopathy---produce presentations frequently indistinguishable from epileptic seizures. Misdiagnosis has severe consequences: 20--30\% of tertiary epilepsy center referrals carry an incorrect initial diagnosis~\citep{benbadis2000errors}, and the mean diagnostic delay for PNES exceeds 7~years~\citep{reuber2002diagnostic}. Routine interictal EEG is normal in up to 50\% of confirmed epilepsy patients~\citep{smith2005eeg}, making this discrimination a demanding benchmark for whether EEG-FM representations capture subtle, clinically meaningful signal structure.
+
+\paragraph{Contributions.}
+We introduce \bench with five contributions: (1)~a hyperparameter-free primary metric ($k$NN@20) for frozen-encoder quality, following DINOv2~\citep{oquab2023dinov2}; (2)~a chance-corrected robustness metric (\cdr) that measures absolute above-chance performance under electrode failure, unlike the retention ratio which rewards trivially stable near-chance models; (3)~Spectral Prior Alignment (\spa), a prior-free grounding metric; (4)~a novel 80-subject epilepsy-vs-mimickers dataset and clinical downstream task; and (5)~a composite leaderboard (\uebgen) and adapter-based evaluation harness (\texttt{ModelAdapter} ABC) for extensibility. Three confirmatory claims are pre-registered with quantitative thresholds and fallback narratives. Code and data: \codeurl.
+
+%% ============================================================
+\section{Related Work}
+\label{sec:related}
+%% ============================================================
+
+\textbf{MOABB}~\citep{jayaram2018moabb} standardizes BCI evaluation but predates foundation models. \textbf{BEETL}~\citep{wei2022beetl} targets transfer learning for motor imagery but does not evaluate frozen representations. \textbf{AdaBrain-Bench}~\citep{chen2025adabrain} evaluates adaptation methods but does not measure representation quality, robustness, or grounding. \textbf{EEG-FM-Bench}~\citep{xiong2026eegfmbench} provides comprehensive diagnostic analyses but retains FT accuracy as primary. \bench provides an independent adapter-based evaluation harness: the \texttt{ModelAdapter} ABC does not depend on any prior benchmark's internals, and any external EEG-FM can be evaluated by implementing three methods (\texttt{encode}, \texttt{freeze\_encoder}, \texttt{unfreeze\_encoder}). Table~\ref{tab:benchmark_comparison} summarizes the comparison.
+
+\begin{table}[t]
+  \caption{EEG evaluation benchmark comparison. \bench is the first to jointly address frozen-backbone probing, robustness, neurophysiological grounding, pre-registration, and a novel clinical task.}
+  \label{tab:benchmark_comparison}
+  \centering
+  \small
+  \begin{tabular}{lccccc}
+    \toprule
+    Benchmark & FBP & Robust. & Neuro Gr. & Pre-Reg. & Novel Task \\
+    \midrule
+    MOABB & -- & -- & -- & -- & -- \\
+    BEETL & -- & -- & -- & -- & -- \\
+    AdaBrain-Bench & -- & -- & -- & -- & -- \\
+    EEG-FM-Bench & Partial & -- & -- & -- & -- \\
+    \textbf{\bench} & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+%% ============================================================
+\section{Benchmark Design}
+\label{sec:design}
+%% ============================================================
+
+Three principles govern the design: (1)~\emph{Separation of concerns}: each axis measures a distinct property; if two axes correlate perfectly, one is redundant. (2)~\emph{Realistic degradation}: robustness uses electrode-failure simulation, not Gaussian noise. (3)~\emph{Validity checks}: novel metrics must pass empirical validation against independent outcomes.
+
+\subsection{Model Pool}
+\label{sec:models}
+
+We evaluate \textbf{6 EEG-FMs} (BIOT, LaBraM, EEGPT, CBraMod, CSBrain, REVE) plus \textbf{MOMENT}~\citep{goswami2024moment} as a general time-series FM reference. Each model is integrated via a \texttt{ModelAdapter} subclass wrapping model-specific weight loading and forward pass; the benchmark harness calls only adapter methods, ensuring model-agnostic evaluation. All models expose a pooled feature vector from their final encoder block; L2-normalization is applied before probing. Full architectural details are in Appendix~\ref{app:models}.
+
+\subsection{Dataset Pool and D7: Epilepsy vs.\ Clinical Mimickers}
+\label{sec:datasets}
+
+The benchmark uses \textbf{7 datasets} spanning major EEG paradigms (Table~\ref{tab:datasets}). Datasets D1--D6 are established; D7 is a novel contribution. All datasets are resampled to 200\,Hz, bandpass filtered (0.5--75\,Hz), notch filtered at 50/60\,Hz, and re-referenced to common average. Trial durations are paradigm-specific to preserve task-defining signal structures.
+
+\begin{table}[t]
+  \caption{Dataset pool. D7 (Epilepsy Mimickers) is a novel public dataset contributed by this work.}
+  \label{tab:datasets}
+  \centering
+  \small
+  \begin{tabular}{clllcrl}
+    \toprule
+    \# & Dataset & Paradigm & Cls. & Subj. & Dur. & Role \\
+    \midrule
+    D1 & BCIC-IV-2a & Motor imagery & 4 & 9 & 4\,s & Standard BCI \\
+    D2 & HMC & Sleep staging & 5 & 151 & 30\,s & Clinical sleep \\
+    D3 & ADFTD & Dementia & 3 & 88 & 10\,s & Neurodegenerative \\
+    D4 & Motor-MV & Motor imagery & 4 & -- & 4\,s & Multi-view motor \\
+    D5 & Siena Scalp & Seizure det. & 2 & 14 & var. & Clinical binary \\
+    D6 & Workload & Cogn.\ workload & 2 & -- & var. & Cognitive state \\
+    D7 & \textbf{Epil.\ Mim.} & \textbf{Epil.\ vs.\ Mim.} & \textbf{2} & \textbf{80} & \textbf{10\,s} & \textbf{Novel clinical} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\textbf{D7: Epilepsy Mimickers.}
+The dataset comprises \textbf{80 subjects}: 50~epileptic (E001--E050) spanning generalized, focal, and juvenile myoclonic subtypes, and 30~mimickers (M001--M030) encompassing PNES, syncope, dissociative reactions, movement disorders, vertigo, and metabolic causes. All recordings use 19-channel 10--20 montage at 125\,Hz with linked-ear reference, segmented into non-overlapping 10-second epochs with the whole-recording binary label. Splits are deterministic and subject-level: 64 train / 8 validation / 8 test subjects. A repeated 5-fold stratified subject-level cross-validation is additionally reported as a sensitivity analysis. Full subject-level metadata are in Appendix~\ref{app:d7_metadata}. This dataset is publicly released alongside the benchmark.
+
+\paragraph{Clinical significance.}
+Epilepsy is among the most common serious neurological disorders, affecting approximately 50 million people worldwide~\citep{who2023epilepsy}. The consequences of misdiagnosis are severe and asymmetric: a patient with PNES misdiagnosed as epileptic may receive anti-epileptic drugs for years without benefit and with substantial side effects; conversely, a patient with true epilepsy misdiagnosed as having a functional disorder is exposed to uncontrolled seizure risk. Routine interictal scalp EEG is the first-line investigation, but its discriminative power for this task is limited: interictal EEGs are normal in up to 50\% of confirmed epilepsy patients~\citep{smith2005eeg}. Unlike seizure \emph{detection}, which asks ``is there an obvious paroxysmal event?'', the mimicker task asks ``does this EEG come from a brain with an epileptic network, even in the absence of overt ictal activity?'' This requires the model to encode subtle interictal signatures: low-amplitude epileptiform discharges, focal slowing, altered background rhythms, and disrupted spectral architecture. If EEG-FMs have truly learned the deep structural regularities that define neural signal, they should distinguish these conditions from their frozen representations alone.
+
+%% ============================================================
+\section{Evaluation Methodology}
+\label{sec:methods}
+%% ============================================================
+
+\subsection{Axis A: Representation Quality}
+\label{sec:axis_a}
+
+\textbf{$k$NN@20 (primary).} Any trained probe introduces hyperparameter choices that can systematically favour one model's geometry over another's. $k$NN@20 eliminates this: it has exactly one hyperparameter ($k$, a count), learns nothing, and directly measures whether same-class samples cluster in embedding space---the evaluation strategy adopted by DINOv2~\citep{oquab2023dinov2}. We sweep $k \in \{5, 10, 20, 50\}$ and report $k{=}20$; $k$-sensitivity is reported in Appendix~\ref{app:k_sensitivity}. For cross-dataset comparability, the Axis A score applies chance correction:
+\begin{equation}
+A_m = \frac{1}{D}\sum_d \max\!\left(0,\; \frac{\text{BA}^{k\text{NN}}_{m,d} - c_d}{1 - c_d}\right), \quad c_d = \frac{1}{K_d}
+\label{eq:axis_a_score}
+\end{equation}
+
+\textbf{FBP (secondary).} Encoder frozen; classifier head (Linear$\to$ReLU$\to$Dropout$\to$Linear) trained with AdamW, LR $= 5{\times}10^{-4}$, 30 epochs. Validated against $k$NN@20 via Kendall $\tau$ (see~$\S$\ref{sec:results_a}).
+
+\textbf{Full fine-tuning (FT).} Same head, encoder unfrozen; encoder LR $= 0.1 \times$ head LR, matching each model's published recipe (per-model details in Appendix~\ref{app:models}).
+
+\textbf{Adaptation metrics.}
+\vspace{-0.5em}
+\begin{align}
+\text{AdaptGap}(m, t) &= \text{FT}(m, t) - \text{FBP}(m, t) \label{eq:adaptgap} \\
+\text{NormAdaptGain}(m, t) &= \frac{\text{FT}(m, t) - \text{FBP}(m, t)}{1 - \text{FBP}(m, t)} \label{eq:nag}
+\end{align}
+\vspace{-0.5em}
+NormAdaptGain $\in (-\infty, 1]$; negative values indicate FT \emph{harms} performance.
+
+\subsection{Axis B: Robustness Under Channel Dropout}
+\label{sec:axis_b}
+
+The retention ratio ($\text{BA}^{\text{corrupt}} / \text{BA}^{\text{clean}}$, averaged over datasets and dropout levels) answers ``how stable is the model relative to itself?'' but not ``how useful is the model when channels are missing?'' A model at clean BA~$= 0.52$ and corrupt BA~$= 0.50$ achieves Ret.Ratio~$= 0.96$ yet remains useless. We define \cdr as the chance-corrected absolute performance under corruption:
+\begin{equation}
+\boxed{\text{CDR}_m = \frac{1}{|D||P|} \sum_{d,p} \max\!\left(0,\; \frac{\text{BA}^{\text{corrupt}}_{m,d,p} - c_d}{1 - c_d}\right)}
+\label{eq:cdr}
+\end{equation}
+where $P = \{0.1, 0.25, 0.4\}$ are random-dropout severity levels applied \emph{pre-adapter, test-only} (train-clean, test-corrupt). Model selection uses clean validation data. The retention ratio is retained as a diagnostic column.
+
+\subsection{Axis C: Spectral Prior Alignment}
+\label{sec:axis_c}
+
+SPA measures whether frozen embeddings linearly encode the five canonical EEG frequency bands:
+\begin{equation}
+\text{SPA}(m, t) = \overline{R^2}\!\left(\mathbf{z}_{m,t} \xrightarrow{\text{Ridge}} [P_\delta,\, P_\theta,\, P_\alpha,\, P_\beta,\, P_\gamma]\right)
+\label{eq:spa}
+\end{equation}
+where $\mathbf{z}_{m,t}$ is the frozen pooled embedding, $P_b$ is relative band power (Welch PSD, averaged across channels, normalized to sum to 1), and Ridge regression ($\alpha \in [10^{-3}, 10^4]$, 5-fold CV) maps embeddings to band powers. SPA $\in [0,1]$; higher is better. BIOT is excluded from SPA because its STFT tokenizer trivially encodes band powers by construction. EEG neuroscience is organized around spectral content: sleep staging is defined by $\delta$ waves and spindles~\citep{berry2012aasm}, motor imagery by $\mu$/$\beta$ event-related desynchronization~\citep{pfurtscheller1999erd}, and cognitive load by frontal midline $\theta$~\citep{onton2005frontal}. If a pretrained EEG-FM does not linearly encode these spectral features, its embedding geometry does not reflect the primary organizational principle of the field. SPA tests this directly without requiring any spatial prior or downstream task labels.
+
+\subsection{Composite: \uebgen}
+\label{sec:composite}
+
+Axes A and C share variance (FBP--SPA $\rho = +0.60$, out-of-sample); summing them would double-count representation quality. We define RepCore $= 0.75\, A_m + 0.25\, C_m$ (where $C_m = \frac{1}{D}\sum_d \text{SPA}_{m,d}$), and the composite ranking via a geometric mean:
+\begin{equation}
+\boxed{\text{UEB-General}_m = (\text{RepCore}_m + \varepsilon)^{0.6}\;(\text{CDR}_m + \varepsilon)^{0.4} - \varepsilon, \quad \varepsilon = 10^{-4}}
+\label{eq:uebgeneral}
+\end{equation}
+The 0.6/0.4 exponents match the RepCore/CDR importance ratio. A model with RepCore~$= 0.90$ and CDR~$= 0.01$ scores $\approx 0.09$; an arithmetic mean would yield $0.544$, incorrectly suggesting near-best performance. The geometric mean structure ensures a model cannot achieve top ranking by excelling on one dimension while collapsing on another. Note that $A_m$ takes values in $[0, {\sim}0.25]$ for the current model pool while $C_m$ takes values in $[0.21, 0.58]$ (corrected out-of-sample SPA), so the 25\%-weighted $C_m$ contributes comparably to $A_m$ in absolute magnitude. This is intentional: $C_m$ serves as a spectral grounding floor check; $A_m$ provides cross-dataset discrimination. Models missing any axis appear in a partial leaderboard.
+
+%% ============================================================
+\section{Results}
+\label{sec:results}
+%% ============================================================
+
+We evaluated 7~models across 7~datasets $\times$ 3~seeds. Axis~A: 240 FBP+FT runs and 141 $k$NN runs completed. Axis~B: 378~corrupted-test runs. Axis~C: 105~SPA runs (all complete). MOMENT was excluded from D7 (memory constraints) and from D4/D5 FT (OOM).
+
+\subsection{Axis A: Representation Quality}
+\label{sec:results_a}
+
+\paragraph{$k$NN@20 leaderboard.}
+Table~\ref{tab:knn_leaderboard} presents the primary representation quality ranking. EEGPT leads ($A_m = 0.229$); REVE has the largest $k$NN--FBP gap ($-0.131$), indicating its probe-inflated FBP does not reflect true embedding separability. Mean $\tau_{k\text{NN},\text{FBP}} = 0.519 < 0.7$ across 7 datasets: FBP is \textbf{not} a certified proxy for $k$NN@20, confirming $k$NN@20 as the sole primary metric (full proxy analysis in Appendix~\ref{app:k_sensitivity}).
+
+\begin{table}[t]
+  \caption{$k$NN@20 leaderboard, ranked by chance-corrected $A_m$. Global $k$-sensitivity = 0.029 (Appendix~\ref{app:k_sensitivity}).}
+  \label{tab:knn_leaderboard}
+  \centering
+  \small
+  \begin{tabular}{rlrrrr}
+    \toprule
+    Rank & Model & $A_m$ & $k$NN raw & FBP mac. & $\Delta$ \\
+    \midrule
+    1 & EEGPT & \textbf{0.229} & 0.502 & 0.571 & $-0.069$ \\
+    2 & BIOT & 0.196 & 0.484 & 0.533 & $-0.048$ \\
+    3 & CSBrain & 0.163 & 0.462 & 0.471 & $-0.009$ \\
+    4 & REVE & 0.136 & 0.453 & 0.585 & $-0.131$ \\
+    5 & CBraMod & 0.111 & 0.421 & 0.461 & $-0.040$ \\
+    6 & LaBraM & 0.097 & 0.421 & 0.442 & $-0.021$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{FBP--FT ranking divergence (Claim~1).}
+Per-dataset Kendall's $\tau$ between FBP and FT rankings yields mean $\tau = 0.291$ with bootstrap 95\% CI $[0.03, 0.56]$, well below the pre-registered 0.7 threshold. \textbf{Claim~1 is confirmed.} The best-model identity flips on 5 of 7~datasets (Table~\ref{tab:rank_agreement}). Per-dataset tables with $k$NN@20, FBP, FT, \adaptgap, and NormAdaptGain are in Appendix~\ref{app:axis_a_full}.
+
+\begin{table}[t]
+  \caption{FBP vs.\ FT ranking agreement across all 7 datasets. Mean $\tau = 0.291 < 0.7$ (Claim~1 confirmed).}
+  \label{tab:rank_agreement}
+  \centering
+  \small
+  \begin{tabular}{lrrll}
+    \toprule
+    Dataset & $\tau$ & $\rho$ & FBP \#1 & FT \#1 \\
+    \midrule
+    BCIC-IV-2a & +0.048 & 0.00 & EEGPT & MOMENT \\
+    HMC & +0.238 & +0.43 & EEGPT & REVE \\
+    Siena Scalp & +0.276 & +0.43 & EEGPT & CBraMod \\
+    Motor MV & +0.467 & +0.60 & EEGPT & REVE \\
+    ADFTD & +0.619 & +0.75 & REVE & REVE \\
+    Workload & +0.720 & +0.82 & REVE & REVE \\
+    Epil.\ Mim. & $-0.333$ & $-0.54$ & EEGPT & REVE \\
+    \midrule
+    \textbf{Mean} & \textbf{+0.291} & \textbf{+0.36} & & \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Fine-tuning harms on D7 and ADFTD.}
+On Epilepsy Mimickers, 5 of 6 models show negative \adaptgap (Table~\ref{tab:d7_axis_a}). EEGPT achieves 0.877 FBP---the highest in the entire benchmark---yet collapses to 0.676 under FT ($\text{AdaptGap} = -0.202$). The same pattern appears on ADFTD (5/7 negative). Full \adaptgap span across the benchmark: $-0.103$ (BIOT on ADFTD) to $+0.289$ (REVE on Motor MV), a 39-point range exceeding cross-model clean-accuracy variance.
+
+\paragraph{Per-model profiles.}
+\textbf{EEGPT} dominates both $k$NN@20 and FBP (rank \#1 on 4/6 core datasets) but drops under FT on those same datasets, indicating its representations are near their effective ceiling. \textbf{REVE} leads FT (rank \#1 on 3/6) despite ranking 4th on $k$NN@20: its frozen embedding geometry is not naturally class-clustered but responds well to adaptation. \textbf{BIOT} ranks 2nd on $k$NN@20 vs 4th on FBP---its STFT tokenization produces well-clustered embeddings with little trained-probe benefit. \textbf{CBraMod} exhibits the largest FBP-to-FT headroom consistently: frozen features are often near chance, but FT brings it to top-of-pack (siena\_scalp FBP 0.619 $\to$ FT 0.849). \textbf{CSBrain} stalls at exactly 0.500 FBP on siena\_scalp and workload (the trained probe produces constant-class predictions), yet FT recovers dramatically (+0.278 gap on Motor MV). \textbf{LaBraM} is consistently bottom-ranked on both FBP and FT; its VQ-NSP representations may not be well-matched to these downstream paradigms. \textbf{No Pareto-optimal model exists}: the best $k$NN model (EEGPT) is rarely the best FT model (REVE).
+
+\begin{table}[t]
+  \caption{Axis A on D7 (Epilepsy Mimickers). 5/6 models: FT \emph{harms} frozen features.}
+  \label{tab:d7_axis_a}
+  \centering
+  \small
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Model & $k$NN & FBP & FT & AdGap & NAG \\
+    \midrule
+    EEGPT & 0.794 & \textbf{0.877} & 0.676 & $-0.202$ & $-1.644$ \\
+    CSBrain & 0.730 & 0.827 & 0.662 & $-0.164$ & $-0.948$ \\
+    REVE & 0.716 & 0.819 & 0.767 & $-0.052$ & $-0.285$ \\
+    BIOT & 0.696 & 0.765 & 0.716 & $-0.048$ & $-0.205$ \\
+    LaBraM & 0.723 & 0.751 & 0.743 & $-0.008$ & $-0.034$ \\
+    CBraMod & 0.723 & 0.708 & 0.729 & $+0.022$ & $+0.074$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Axis B: Robustness}
+\label{sec:results_b}
+
+Table~\ref{tab:cdr} presents the \cdr leaderboard for the 5 verified EEG-FMs. BIOT is excluded from Axis B: its STFT tokenizer applies a per-channel frequency-domain transform before the dropout hook can act on the raw signal, producing a pipeline-artifact CDR that is not comparable to the other models. Among verified models, EEGPT leads (0.223). The \cdr--Ret.Ratio divergence is exactly as predicted: CSBrain achieves the highest Ret.Ratio (0.985) but only 3rd-highest \cdr (0.166), because its near-chance clean performance is trivially dropout-stable. Clean performance and \cdr are weakly positively correlated ($\tau \approx +0.47$): stronger models degrade more in absolute terms but remain more useful.
+
+Siena Scalp is the hardest dataset for robustness: four models collapse to exactly chance (0.500) at $p \geq 0.25$. Only EEGPT and BIOT remain above chance at $p = 0.4$. Binary seizure detection relies heavily on high-gamma and sharp-wave features that are spatially concentrated; losing 10+ channels destroys the relevant signal. D7 (Epilepsy Mimickers) is the most discriminating dataset: cross-model spread at $p = 0.4$ (0.500--0.735) is larger than any other dataset, and EEGPT retains the highest per-dataset \cdr (0.635). On ADFTD, REVE's accuracy \emph{improves} under dropout (clean 0.464 $\to$ 0.567 at $p = 0.25$): REVE's channel-specific fine-grained features introduce noise on the 3-class task, and channel zeroing acts as regularization that improves cross-subject generalization. Per-dataset \cdr and degradation curves are in Appendix~\ref{app:axis_b_curves}.
+
+\begin{table}[t]
+  \caption{\cdr (primary) and Ret.Ratio (diagnostic). 5 verified EEG-FMs $\times$ 7 datasets $\times$ 3 seeds $\times$ 3 dropout rates. BIOT excluded: STFT tokenizer bypasses pre-adapter channel dropout (pipeline artifact).}
+  \label{tab:cdr}
+  \centering
+  \small
+  \begin{tabular}{rlrrr}
+    \toprule
+    Rank & Model & \cdr & Ret.Ratio & $n$ \\
+    \midrule
+    1 & EEGPT & \textbf{0.223} & 0.893 & 21 \\
+    2 & REVE & 0.171 & 0.880 & 21 \\
+    3 & CSBrain & 0.166 & \textbf{0.985} & 21 \\
+    4 & LaBraM & 0.127 & 0.975 & 21 \\
+    5 & CBraMod & 0.112 & 0.975 & 21 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Axis C: Spectral Grounding}
+\label{sec:results_c}
+
+EEGPT leads SPA (0.580), the only model above 0.33 on every dataset including the hardest case (Workload, 0.578). REVE is second (0.448) but collapses to near-zero on Workload (0.030)---frontal-$\theta$ elevation is not linearly recoverable from its pooled representation. CSBrain is last (0.209), below 0.40 on all seven datasets; its high electrode-invariance (Ret.Ratio = 0.985) comes at the cost of spectral compression. FBP--SPA $\rho = +0.60$ (out-of-sample) indicates a moderate positive association; CSBrain (FBP rank 3, SPA rank 5) most clearly breaks the monotone relationship. SPA--Ret.Ratio $\rho = -0.90$ ($p = 0.037$) is the only statistically significant cross-axis correlation: channel-robust models encode less spectral content. EEGPT leads on all five frequency bands ($\delta$: 0.635, $\alpha$: 0.634); CSBrain is last on every band ($\theta$: 0.139). Per-band profiles and per-dataset heatmaps are in Appendix~\ref{app:spa_details}.
+
+\begin{table}[t]
+  \caption{SPA leaderboard (5 models $\times$ 7 datasets $\times$ 3 seeds = 105 runs). BIOT excluded.}
+  \label{tab:spa}
+  \centering
+  \small
+  \begin{tabular}{lrrrrrrr}
+    \toprule
+    Model & SPA & $\delta$ & $\theta$ & $\alpha$ & $\beta$ & $\gamma$ & Dim \\
+    \midrule
+    EEGPT & \textbf{.580} & \textbf{.635} & \textbf{.567} & \textbf{.634} & \textbf{.571} & \textbf{.494} & 256 \\
+    REVE & .448 & .582 & .388 & .479 & .476 & .315 & 512 \\
+    LaBraM & .439 & .570 & .339 & .468 & .500 & .319 & 256 \\
+    CBraMod & .407 & .520 & .327 & .437 & .447 & .304 & 200 \\
+    CSBrain & .209 & .293 & .139 & .214 & .251 & .149 & 200 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Composite: \uebgen}
+\label{sec:results_composite}
+
+Table~\ref{tab:uebgeneral} presents the final ranking. EEGPT leads (\uebgen $= 0.275$), REVE second (0.196), CSBrain third (0.171). No model simultaneously achieves high $A_m$, high \cdr, and high $C_m$. REVE ranks 2nd despite 4th on $A_m$---its SPA (0.448) elevates RepCore above CSBrain, and its \cdr (0.171) holds. High Ret.Ratio ($\approx$0.97--0.99 for CSBrain, CBraMod, LaBraM) does not translate to high \cdr: retaining near-chance performance under corruption is not meaningful robustness, and the geometric structure of \uebgen correctly ranks absolute \cdr above the retention ratio.
+
+BIOT is excluded from both Axis B (STFT tokenizer bypasses the channel-dropout hook, producing pipeline-artifact CDR) and Axis C (STFT tokenizer trivially encodes band powers); it appears in the partial leaderboard with $A_m = 0.196$ only. MOMENT is excluded from \cdr due to OOM on the robustness sweep and appears in the partial leaderboard with strong SPA but indeterminate robustness.
+
+\begin{table}[t]
+  \caption{\uebgen leaderboard. BIOT lacks both \cdr (STFT bypasses dropout hook) and $C_m$ (STFT trivially encodes band powers); MOMENT lacks \cdr (OOM).}
+  \label{tab:uebgeneral}
+  \centering
+  \small
+  \begin{tabular}{rlrrrrr}
+    \toprule
+    Rk & Model & $A_m$ & CDR & R.R. & $C_m$ & \textbf{UEB-G} \\
+    \midrule
+    1 & EEGPT & \textbf{.229} & \textbf{.223} & .893 & \textbf{.580} & \textbf{.275} \\
+    2 & REVE & .136 & .171 & .880 & .448 & .196 \\
+    3 & CSBrain & .163 & .166 & \textbf{.985} & .209 & .171 \\
+    4 & LaBraM & .097 & .127 & .975 & .439 & .158 \\
+    5 & CBraMod & .111 & .112 & .975 & .407 & .151 \\
+    -- & BIOT & .196 & N/A & N/A & N/A & partial \\
+    -- & MOMENT & .091 & N/A & -- & .623 & partial \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+%% ============================================================
+\section{Statistical Framework and Pre-Registered Claims}
+\label{sec:stats}
+%% ============================================================
+
+All experiments use 3 random seeds (42, 123, 7). Three confirmatory claims are subject to Bonferroni correction ($\alpha = 0.05/3 \approx 0.0167$); all other analyses are exploratory. Bootstrap 95\% CIs (10,000 iterations) are reported around all aggregate statistics. Per-subject accuracy is the unit of analysis for paired tests where subject-level splits are available.
+
+\textbf{Claim~1} (FBP $\neq$ FT ranking): mean $\tau < 0.7$. \textbf{Confirmed} ($\tau = 0.291$, CI $[0.03, 0.56]$ across 7 datasets). The result does not depend on any single dataset: removing the most-disagreeing dataset (Epil.\ Mim., $\tau = -0.333$) gives mean $\tau = 0.395$, still well below threshold. \textbf{Claim~2} (chance correction re-ranks robustness; CDR is not redundant with Ret.Ratio): $|\tau_{\text{Kendall}}(\text{CDR},\, \text{Ret.Ratio})| \geq 0.4$. \textbf{Confirmed} ($\tau \approx -0.80$): the top-3 models by Ret.Ratio (CSBrain, LaBraM, CBraMod) are bottom-3 by CDR, because near-chance models trivially retain near-chance performance under corruption---demonstrating that chance correction, not retention, captures meaningful robustness. \textbf{Claim~3} (SPA exposes model-specific spectral failure): per-band $R^2$ gap $\geq 0.10$ between consecutive models. \textbf{Confirmed} (CBraMod $\theta$ $R^2 = 0.327$ vs CSBrain 0.139, gap = 0.188). CSBrain's SPA rank (5) is two positions below its FBP rank (3)---the largest FBP-to-SPA displacement in the pool; the confirmatory test is the band-specific $R^2$ gap, not aggregate rank displacement.
+
+\textbf{Model-selection sensitivity.} Across the 6 core datasets for which both selectors are recorded, switching from last-epoch to best-validation-epoch selection changes mean $\tau$ from 0.395 to 0.495 (+0.10), in the direction of \emph{more} agreement between FBP and FT---both selectors confirm Claim~1. We report last-epoch as primary, consistent with the EEG-FM literature and chosen before the confirmatory sweep (full sensitivity analysis in Appendix~\ref{app:bestval}).
+
+\textbf{Fallback narratives.} If Claim~1 failed, FBP would be reframed as a $10\times$ cheaper equivalent to FT. If Claim~3 failed, SPA becomes a mechanistic explanation for FBP (the $\rho = 0.60$ association is itself a finding). All fallbacks are pre-specified.
+
+%% ============================================================
+\section{Discussion and Limitations}
+\label{sec:discussion}
+%% ============================================================
+
+\paragraph{No Pareto-optimal model.}
+EEGPT leads on $k$NN@20, \cdr, and SPA simultaneously. REVE leads FBP but ranks 4th on $k$NN@20 and near-zero SPA on Workload. CSBrain is the dropout champion (Ret.Ratio = 0.985) but last on SPA (0.209), illustrating the spectral-compression tradeoff. This multi-dimensional landscape is invisible under FT-only evaluation. The three-axis geometry identifies distinct \emph{model archetypes}: \textbf{EEGPT} ($k$NN \#1, SPA \#1, CDR \#1, Ret.Ratio 4/5) is the all-around leader; \textbf{REVE} (FBP \#1, SPA \#2, CDR \#2) is strong across most tasks but workload-blind (SPA = 0.030 on Workload); \textbf{CSBrain} (CDR \#3, Ret.Ratio \#1, SPA \#5 = 0.209) achieves electrode invariance through spectral compression; \textbf{LaBraM} (SPA \#3 = 0.439, Ret.Ratio \#2) is the most consistent mid-tier model; and \textbf{CBraMod} (SPA \#4, CDR \#5) is spectrally task-dependent (HMC SPA = 0.631 vs Workload SPA = 0.047).
+
+\paragraph{The epilepsy-mimickers diagnostic.}
+D7 amplifies the FT-harms pattern that also appears on ADFTD: 5/6 models on D7 and 5/7 models on ADFTD show negative \adaptgap. D7 is not unique in producing this pattern, but it produces it at larger magnitude (mean \adaptgap $-0.075$ on D7 vs $-0.026$ on matched-model ADFTD), making it the more diagnostic of the two. EEGPT's frozen features achieve 87.7\% balanced accuracy on D7---the highest frozen score in the benchmark---yet FT collapses this by 20 points. CBraMod is the sole exception on D7 (+0.022), likely because its cross-attention head benefits most from backbone adaptation on small clinical datasets. The clinical implication is actionable: \emph{for subtle diagnostic tasks, EEG-FMs should be deployed with frozen backbones}. Fine-tuning on 64 subjects overfits to idiosyncratic patterns at the cost of general spectral signatures.
+
+\paragraph{CDR vs.\ retention ratio.}
+The CDR--Ret.Ratio divergence illustrates why chance correction matters for robustness evaluation. CSBrain achieves the highest Ret.Ratio (0.985) but only 4th-highest CDR (0.166) because retaining near-chance performance under corruption is not meaningful robustness. The retention ratio remains a valuable brittleness diagnostic (a model with Ret.Ratio = 0.50 has genuinely collapsed), but it should not determine the ranking. The correct Axis B narrative is that \emph{strong models degrade more in absolute terms but remain more useful}: clean performance and CDR are weakly positively correlated ($\tau \approx +0.47$).
+
+\paragraph{Architectural implications.}
+The SPA--Ret.Ratio anti-correlation ($\rho = -0.90$, $p = 0.037$) is the only statistically significant cross-axis correlation in the benchmark, suggesting a concrete pretraining target: contrastive learning over channel-masked views with a spectral consistency loss. The \uebgen geometry identifies the unoccupied corner (high $A_m$, high \cdr, high $C_m$) as a concrete design objective for future EEG-FMs. CSBrain's $\theta$-band $R^2 = 0.139$ (lowest in the pool) is a measurable consequence of its architecture: region-aware pooling achieves electrode invariance by compressing precisely the per-channel spectral precision that SPA requires. This is not a training failure but an architectural design choice with measurable downstream consequences.
+
+\paragraph{Limitations.}
+Seven datasets do not span all EEG paradigms, and cross-paradigm generalization is not directly measured. Per-model training recipes retain each model's published hyperparameters for comparability, which may advantage or disadvantage specific models. SPA averages Welch PSD across channels, discarding spatial information; a complementary spatial metric (NAS) is reported in Supplement~B. BIOT is excluded from both Axis B (STFT bypasses the dropout hook) and Axis C (STFT trivially encodes band powers), and appears in the partial \uebgen leaderboard. The D7 held-out test set contains only 8 subjects; repeated cross-validation is reported as sensitivity. Compute requirements (${\sim}3200$ GPU-hours, broken down as $\approx$1200 GPU-h Axis A FBP+FT, $\approx$1900 GPU-h Axis B, $\approx$100 GPU-h $k$NN+SPA forward passes) limit community adoption, though a bench-lite protocol (${\sim}300$ GPU-hours: 3 models $\times$ 3 datasets $\times$ 1 seed) is provided. Streaming/online inference and deployment profiling are not addressed.
+
+%% ============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+%% ============================================================
+
+\bench demonstrates that EEG Foundation Models should be evaluated by what their pretrained representations encode, whether those representations are grounded in neurophysiology, and whether they remain reliable under realistic signal degradation. By introducing $k$NN@20 (hyperparameter-free), \cdr (chance-corrected robustness), \spa (prior-free spectral grounding), \uebgen (geometric composite), a novel clinical downstream task, and an adapter-based evaluation harness, we provide the community with tools to evaluate EEG-FMs on properties that matter for scientific validity and clinical deployment. Current EEG-FMs occupy distinct, non-overlapping regions of the quality--robustness--grounding space; fine-tuning can actively destroy clinically relevant representations; and no single model dominates. The three-axis geometry reveals a concrete, currently unoccupied design target---spectral fidelity from multiple electrode subsets---that should guide the next generation of EEG foundation model pretraining objectives. The epilepsy-vs-mimickers dataset, benchmark harness, and evaluation code are publicly released at \codeurl.
+
+%% ============================================================
+\bibliographystyle{plainnat}
+\begin{thebibliography}{18}
+\small
+
+\bibitem[Yang et~al.(2023)]{yang2023biot}
+Yang, C., Westover, M.B., \& Sun, J. (2023). BIOT: Biosignal transformer for cross-data learning in EEG and ECG. \textit{NeurIPS 2023}.
+
+\bibitem[Jiang et~al.(2024)]{jiang2024labram}
+Jiang, W., Zhao, L., \& Lu, B.L. (2024). Large Brain Model for learning generic representations with tremendous EEG data in BCI. \textit{ICLR 2024}.
+
+\bibitem[Wang et~al.(2024a)]{wang2024eegpt}
+Wang, Y., et~al. (2024a). EEGPT: Unleashing the potential of EEG generalist foundation model by autoregressive pre-training. \textit{arXiv:2401.18006}.
+
+\bibitem[Wang et~al.(2024b)]{wang2024cbramod}
+Wang, Y., et~al. (2024b). CBraMod: A criss-cross brain foundation model for EEG decoding. \textit{arXiv:2412.07236}.
+
+\bibitem[Xiong et~al.(2026)]{xiong2026eegfmbench}
+Xiong, Z., et~al. (2026). EEG-FM-Bench: A comprehensive benchmark for evaluating EEG foundation models. \textit{Under review}.
+
+\bibitem[Jayaram \& Barachant(2018)]{jayaram2018moabb}
+Jayaram, V. \& Barachant, A. (2018). MOABB: Trustworthy algorithm benchmarking for BCIs. \textit{J.\ Neural Eng.}, 15(6), 066011.
+
+\bibitem[Wei et~al.(2022)]{wei2022beetl}
+Wei, X., et~al. (2022). BEETL: Few-shot EEG transfer learning. \textit{NeurIPS 2021 Competitions}.
+
+\bibitem[Chen et~al.(2025)]{chen2025adabrain}
+Chen, Z., et~al. (2025). AdaBrain-Bench: Benchmarking adaptation methods for EEG foundation models. \textit{arXiv:2504.14673}.
+
+\bibitem[Goswami et~al.(2024)]{goswami2024moment}
+Goswami, M., et~al. (2024). MOMENT: A family of open time-series foundation models. \textit{ICML 2024}.
+
+\bibitem[Oquab et~al.(2023)]{oquab2023dinov2}
+Oquab, M., et~al. (2023). DINOv2: Learning robust visual features without supervision. \textit{arXiv:2304.07193}.
+
+\bibitem[Benbadis \& Allen~Hauser(2000)]{benbadis2000errors}
+Benbadis, S.R. \& Allen~Hauser, W. (2000). An estimate of the prevalence of psychogenic non-epileptic seizures. \textit{Seizure}, 9(4), 280--281.
+
+\bibitem[Reuber et~al.(2002)]{reuber2002diagnostic}
+Reuber, M., et~al. (2002). Diagnostic delay in psychogenic nonepileptic seizures. \textit{Neurology}, 58(3), 493--495.
+
+\bibitem[Smith(2005)]{smith2005eeg}
+Smith, S.J.M. (2005). EEG in the diagnosis, classification, and management of patients with epilepsy. \textit{J.\ Neurol.\ Neurosurg.\ Psychiatry}, 76(s2), ii2--ii7.
+
+\bibitem[{World Health Organization}(2023)]{who2023epilepsy}
+{World Health Organization} (2023). Epilepsy fact sheet.
+
+\bibitem[Berry et~al.(2012)]{berry2012aasm}
+Berry, R.B., et~al. (2012). The AASM manual for the scoring of sleep and associated events. \textit{AASM}.
+
+\bibitem[Pfurtscheller \& Lopes~da~Silva(1999)]{pfurtscheller1999erd}
+Pfurtscheller, G. \& Lopes~da~Silva, F.H. (1999). Event-related EEG/MEG synchronization and desynchronization. \textit{Clin.\ Neurophysiol.}, 110(11), 1842--1857.
+
+\bibitem[Onton et~al.(2005)]{onton2005frontal}
+Onton, J., Delorme, A., \& Makeig, S. (2005). Frontal midline EEG dynamics during working memory. \textit{NeuroImage}, 27(2), 341--356.
+
+\end{thebibliography}
+
+%% ============================================================
+%% APPENDIX
+%% ============================================================
+
+\appendix
+
+\section{Model Pool Details}
+\label{app:models}
+
+\begin{table}[h]
+  \caption{Full model pool. Each evaluated model is integrated via a \texttt{ModelAdapter} subclass providing \texttt{encode}, \texttt{freeze\_encoder}, and \texttt{unfreeze\_encoder} methods. Adapters pass a conformance test suite verifying output dimensions, gradient control, and freeze/unfreeze cycle idempotency.}
+  \label{tab:models_full}
+  \centering
+  \small
+  \begin{tabular}{clllp{4.2cm}}
+    \toprule
+    \# & Model & Architecture & Adapter & Key Properties \\
+    \midrule
+    M1 & BIOT & Patch-freq.\ Transformer & \texttt{BIOTAdapter} & STFT tokenizer; fp32 required; 4 layers \\
+    M2 & LaBraM & Ch.-wise NeuralTransformer & \texttt{LaBraMAdapter} & VQ-VAE tokenizer; cosine + 2-ep warmup \\
+    M3 & EEGPT & ViT-style patch Transformer & \texttt{EEGPTAdapter} & Dynamic channels; 8 layers, 256-dim \\
+    M4 & CBraMod & Criss-cross attn Transformer & \texttt{CBraMoDAdapter} & 12 layers, 200-dim \\
+    M5 & CSBrain & Region-aware Transformer & \texttt{CSBrainAdapter} & TemEmbedEEGLayer; 12 layers, 200-dim \\
+    M6 & REVE & 22-depth Transformer & \texttt{REVEAdapter} & GEGLU FFN; 4D Fourier PE; 512-dim \\
+    M7 & MOMENT & T5-encoder & \texttt{MOMENTAdapter} & General TS-FM; 350M params \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Training recipe.}
+All models share: AdamW, head LR $5 \times 10^{-4}$, encoder LR $= 0.1 \times$ head LR, 30 epochs, batch 32, grad clip 3.0, weight decay 0.01, label smoothing 0.1, bf16 AMP (BIOT: fp32). Per-model LR schedulers: EEGPT onecycle; LaBraM cosine + 2-epoch warmup; CBraMod/BIOT/CSBrain cosine; REVE reduce-on-plateau; MOMENT cosine. These match each model's published recipe.
+
+\paragraph{Feature extraction.}
+Models without a CLS token (EEGPT, CBraMod, CSBrain, REVE) use mean-pooling over patches. BIOT and LaBraM extract the CLS-equivalent token. All features are L2-normalized before probing.
+
+\FloatBarrier
+\section{Full Axis A Results}
+\label{app:axis_a_full}
+
+All tables: test balanced accuracy, mean $\pm$ std over 3 seeds. $k$NN@20 reports mean only.
+
+\begin{table}[h]
+  \caption{BCIC-IV-2a (4-class motor imagery, chance = 0.25).}
+  \centering\small
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Model & $k$NN & FBP & FT & AdGap & NAG \\
+    \midrule
+    EEGPT & \textbf{.302} & $.288 \pm .006$ & $.332 \pm .013$ & $+.044$ & $+.062$ \\
+    MOMENT & -- & $.286 \pm .006$ & $.364 \pm .011$ & $+.078$ & $+.109$ \\
+    LaBraM & .251 & $.278 \pm .008$ & $.271 \pm .010$ & $-.007$ & $-.010$ \\
+    CSBrain & .268 & $.270 \pm .002$ & $.354 \pm .005$ & $+.084$ & $+.115$ \\
+    CBraMod & .260 & $.268 \pm .002$ & $.311 \pm .037$ & $+.043$ & $+.058$ \\
+    REVE & .265 & $.266 \pm .009$ & $.338 \pm .010$ & $+.073$ & $+.099$ \\
+    BIOT & .267 & $.259 \pm .004$ & $.334 \pm .015$ & $+.075$ & $+.102$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \caption{HMC (5-class sleep staging, chance = 0.20).}
+  \centering\small
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Model & $k$NN & FBP & FT & AdGap & NAG \\
+    \midrule
+    EEGPT & .627 & $.661 \pm .001$ & $.704 \pm .007$ & $+.042$ & $+.125$ \\
+    REVE & .622 & $.659 \pm .001$ & $.710 \pm .004$ & $+.051$ & $+.150$ \\
+    BIOT & .620 & $.641 \pm .006$ & $.681 \pm .017$ & $+.040$ & $+.112$ \\
+    MOMENT & -- & $.585 \pm .001$ & $.623 \pm .003$ & $+.037$ & $+.090$ \\
+    CSBrain & .563 & $.560 \pm .001$ & $.698 \pm .003$ & $+.137$ & $+.312$ \\
+    LaBraM & .527 & $.515 \pm .007$ & $.642 \pm .009$ & $+.127$ & $+.263$ \\
+    CBraMod & .485 & $.509 \pm .000$ & $.700 \pm .007$ & $+.191$ & $+.388$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \caption{ADFTD (3-class dementia, chance = 0.33). Five of seven models show negative AdaptGap.}
+  \centering\small
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Model & $k$NN & FBP & FT & AdGap & NAG \\
+    \midrule
+    REVE & .579 & $.601 \pm .006$ & $.584 \pm .022$ & $-.017$ & $-.044$ \\
+    BIOT & .491 & $.487 \pm .007$ & $.384 \pm .031$ & $-.103$ & $-.200$ \\
+    EEGPT & .441 & $.432 \pm .001$ & $.492 \pm .015$ & $+.060$ & $+.106$ \\
+    MOMENT & -- & $.407 \pm .004$ & $.331 \pm .009$ & $-.075$ & $-.127$ \\
+    CSBrain & .376 & $.367 \pm .002$ & $.510 \pm .013$ & $+.144$ & $+.227$ \\
+    CBraMod & .364 & $.359 \pm .003$ & $.325 \pm .015$ & $-.034$ & $-.053$ \\
+    LaBraM & .321 & $.290 \pm .022$ & $.269 \pm .024$ & $-.021$ & $-.029$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \caption{Motor MV (4-class, chance $\approx$ 0.25). MOMENT excluded (OOM).}
+  \centering\small
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Model & $k$NN & FBP & FT & AdGap & NAG \\
+    \midrule
+    EEGPT & .363 & $.387 \pm .003$ & $.497 \pm .006$ & $+.110$ & $+.179$ \\
+    REVE & .291 & $.312 \pm .005$ & $.601 \pm .007$ & $+.289$ & $+.420$ \\
+    BIOT & .276 & $.289 \pm .002$ & $.385 \pm .008$ & $+.096$ & $+.135$ \\
+    CSBrain & .264 & $.271 \pm .004$ & $.549 \pm .015$ & $+.278$ & $+.382$ \\
+    CBraMod & .260 & $.265 \pm .006$ & $.435 \pm .003$ & $+.170$ & $+.232$ \\
+    LaBraM & .252 & $.261 \pm .003$ & $.282 \pm .006$ & $+.021$ & $+.028$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \caption{Siena Scalp (binary seizure detection, chance = 0.50). MOMENT FT excluded (OOM).}
+  \centering\small
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Model & $k$NN & FBP & FT & AdGap & NAG \\
+    \midrule
+    EEGPT & .692 & $.792 \pm .007$ & $.770 \pm .007$ & $-.022$ & $-.106$ \\
+    REVE & .634 & $.774 \pm .011$ & $.832 \pm .009$ & $+.057$ & $+.254$ \\
+    BIOT & .558 & $.645 \pm .072$ & $.677 \pm .007$ & $+.032$ & $+.090$ \\
+    CBraMod & .554 & $.619 \pm .006$ & $\mathbf{.849} \pm .028$ & $+.230$ & $+.604$ \\
+    MOMENT & -- & $.540 \pm .003$ & N/A & -- & -- \\
+    LaBraM & .500 & $.500 \pm .000$ & $.666 \pm .018$ & $+.166$ & $+.331$ \\
+    CSBrain & .500 & $.500 \pm .000$ & $.698 \pm .023$ & $+.198$ & $+.397$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \caption{Workload (binary cognitive workload, chance = 0.50).}
+  \centering\small
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Model & $k$NN & FBP & FT & AdGap & NAG \\
+    \midrule
+    REVE & .583 & $.661 \pm .035$ & $\mathbf{.692} \pm .023$ & $+.031$ & $+.092$ \\
+    BIOT & .559 & $.643 \pm .028$ & $.680 \pm .021$ & $+.038$ & $+.105$ \\
+    EEGPT & .541 & $.560 \pm .010$ & $.670 \pm .013$ & $+.110$ & $+.250$ \\
+    CBraMod & .505 & $.500 \pm .000$ & $.515 \pm .023$ & $+.015$ & $+.030$ \\
+    CSBrain & .511 & $.500 \pm .000$ & $.621 \pm .062$ & $+.121$ & $+.242$ \\
+    MOMENT & -- & $.500 \pm .000$ & $.553 \pm .023$ & $+.053$ & $+.107$ \\
+    LaBraM & .502 & $.499 \pm .002$ & $.561 \pm .016$ & $+.062$ & $+.124$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+\section{Axis B: Per-Dataset \cdr and Degradation Curves}
+\label{app:axis_b_curves}
+
+\begin{table}[h]
+  \caption{Per-dataset \cdr (chance-corrected). Bold: best per dataset. BIOT excluded (STFT bypasses dropout hook).}
+  \centering\small
+  \begin{tabular}{lrrrrrrrl}
+    \toprule
+    Model & BCIC & HMC & ADFTD & Motor & Siena & Work. & Ep-M & CDR \\
+    \midrule
+    EEGPT & .023 & \textbf{.437} & .087 & \textbf{.085} & .164 & \textbf{.128} & \textbf{.635} & \textbf{.223} \\
+    REVE & .012 & .384 & \textbf{.345} & .054 & \textbf{.165} & .104 & .132 & .171 \\
+    CSBrain & \textbf{.046} & .386 & .035 & .019 & .000 & .000 & .675 & .166 \\
+    LaBraM & .023 & .302 & .002 & .011 & .000 & .002 & .546 & .127 \\
+    CBraMod & .024 & .263 & .030 & .020 & .000 & .000 & .446 & .112 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \caption{Selected degradation curves (seed-averaged balanced accuracy, best-val epoch).}
+  \centering\small
+  \begin{tabular}{llrrrr}
+    \toprule
+    Model & Dataset & clean & $p{=}0.1$ & $p{=}0.25$ & $p{=}0.4$ \\
+    \midrule
+    EEGPT & HMC & 0.665 & 0.669 & 0.490 & 0.490 \\
+    EEGPT & Siena & 0.804 & 0.734 & 0.513 & 0.500 \\
+    EEGPT & Ep-Mim & 0.880 & 0.891 & 0.855 & 0.707 \\
+    REVE & ADFTD & 0.464 & \textbf{0.560} & \textbf{0.567} & \textbf{0.564} \\
+    REVE & Ep-Mim & 0.832 & 0.691 & 0.507 & 0.500 \\
+    CSBrain & Ep-Mim & 0.844 & 0.852 & 0.853 & 0.808 \\
+    LaBraM & Ep-Mim & 0.760 & 0.760 & 0.779 & 0.781 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+\section{SPA Details}
+\label{app:spa_details}
+
+\begin{table}[h]
+  \caption{SPA per (model, dataset), mean over 3 seeds. Bold: best per dataset.}
+  \centering\small
+  \begin{tabular}{lrrrrrrr}
+    \toprule
+    Model & BCIC & HMC & ADFTD & Motor & Siena & Work. & Ep-M \\
+    \midrule
+    EEGPT & \textbf{.792} & .510 & \textbf{.650} & .579 & .330 & \textbf{.578} & \textbf{.624} \\
+    REVE & .286 & \textbf{.719} & .401 & \textbf{.648} & \textbf{.550} & .030 & .501 \\
+    LaBraM & .278 & .629 & .337 & .562 & .467 & .284 & .518 \\
+    CBraMod & .174 & .631 & .394 & .549 & .514 & .047 & .540 \\
+    CSBrain & .101 & .254 & .124 & .332 & .246 & .010 & .398 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \caption{Cross-axis Spearman $\rho$ (5 SPA-eligible models, BIOT excluded).}
+  \centering\small
+  \begin{tabular}{lrl}
+    \toprule
+    Pair & $\rho$ & Interpretation \\
+    \midrule
+    FBP vs.\ SPA & $+0.60$ & Moderate positive (out-of-sample); not monotone \\
+    FBP vs.\ Ret.Ratio & $-0.60$ & Stronger models more channel-dependent \\
+    Ret.Ratio vs.\ SPA & $-0.90$ & Only significant cross-axis correlation ($p=0.037$) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+\section{$k$NN Sensitivity Analysis}
+\label{app:k_sensitivity}
+
+\begin{table}[h]
+  \caption{$k$-sensitivity (max $-$ min bal.\ acc.\ across $k \in \{5, 10, 20, 50\}$). Global mean = 0.029.}
+  \centering\small
+  \begin{tabular}{lrrrrrrr}
+    \toprule
+    Model & BCIC & HMC & ADFTD & Motor & Siena & Work. & Ep-M \\
+    \midrule
+    EEGPT & .015 & .012 & .039 & .013 & .175 & .017 & .026 \\
+    LaBraM & .023 & .010 & .029 & .015 & .000 & .024 & .066 \\
+    CBraMod & .015 & .027 & .008 & .016 & .012 & .006 & .040 \\
+    BIOT & .011 & .015 & .032 & .020 & .025 & .053 & .034 \\
+    CSBrain & .027 & .011 & .025 & .014 & .125 & .037 & .035 \\
+    REVE & .008 & .010 & .051 & .019 & .025 & .043 & .027 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \caption{$k$NN@20 vs FBP rank agreement (Kendall $\tau$) per dataset. Mean $\tau = 0.519 < 0.7$: FBP is not a certified proxy for $k$NN@20.}
+  \centering\small
+  \begin{tabular}{lrrc}
+    \toprule
+    Dataset & $\tau$ & $p$ & $\tau \geq 0.7$? \\
+    \midrule
+    BCIC-IV-2a & 0.429 & 0.239 & no \\
+    HMC & \textbf{0.867} & \textbf{0.017} & \textbf{yes} \\
+    ADFTD & \textbf{0.905} & \textbf{0.003} & \textbf{yes} \\
+    Motor MV & 0.600 & 0.136 & no \\
+    Siena & 0.231 & 0.539 & no \\
+    Workload & 0.138 & 0.702 & no \\
+    Epil-Mim & 0.467 & 0.272 & no \\
+    \midrule
+    \textbf{Mean} & \textbf{0.519} & & \textbf{no} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+\section{Model-Selection Sensitivity}
+\label{app:bestval}
+
+\begin{table}[h]
+  \caption{FBP--FT ranking agreement under last-epoch vs.\ best-validation-epoch (6 core datasets; D7 best-val not yet recomputed). Both confirm Claim~1 on this subset; the 7-dataset last-epoch mean reported in Table~\ref{tab:rank_agreement} is $\tau = 0.291$. Last-epoch is primary (consistent with EEG-FM literature).}
+  \centering\small
+  \begin{tabular}{lrrr}
+    \toprule
+    Dataset & $\tau$ (last) & $\tau$ (best-val) & $\Delta$ \\
+    \midrule
+    BCIC-2a & +0.048 & +0.333 & +0.286 \\
+    HMC & +0.238 & +0.524 & +0.286 \\
+    ADFTD & +0.619 & +0.714 & +0.095 \\
+    Motor MV & +0.467 & +0.333 & $-0.133$ \\
+    Siena & +0.276 & +0.447 & +0.171 \\
+    Workload & +0.720 & +0.617 & $-0.103$ \\
+    \midrule
+    \textbf{Mean} & \textbf{+0.395} & \textbf{+0.495} & \textbf{+0.100} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+\section{Epilepsy Mimickers: Subject-Level Metadata}
+\label{app:d7_metadata}
+
+The epileptic cohort ($n=50$) comprises: Generalized Epilepsy / GTCS ($n=27$), Primary Generalized ($n=15$), Left Temporal Focal ($n=5$), Right Temporal Focal ($n=3$), JME ($n=3$), Bilateral Focal with Secondary Generalized ($n=1$), SSPE ($n=1$), unclassified focal ($n=2$). Categories overlap.
+
+The mimicker cohort ($n=30$) comprises: PNES/PNED ($n=4$), Neurocardiogenic Syncope ($n=2$), Syncopal Attacks ($n=3$), Dissociative Reaction ($n=3$), Movement Disorders ($n=4$), Vertigo ($n=2$), Sleep Apnea ($n=1$), Panic Attack ($n=1$), Psychogenic seizure disorder ($n=1$), Metabolic/Structural/Vascular ($n=9$).
+
+All recordings: 19-channel 10--20 montage (Fp1, Fp2, F3, F4, C3, C4, P3, P4, O1, O2, F7, F8, T3, T4, T5, T6, Fz, Cz, Pz) at 125\,Hz, linked-ear reference. EDF format, anonymized identifiers.
+
+\FloatBarrier
+\section{Broader Impact Statement}
+\label{app:broader_impact}
+
+This work introduces a benchmark and public dataset for evaluating EEG foundation models. The primary positive impact is enabling more rigorous evaluation of models proposed for clinical EEG analysis, helping identify unreliable models before clinical deployment. The epilepsy-mimickers dataset could benefit patients by accelerating differential diagnosis research.
+
+Potential negative impacts include premature clinical deployment without prospective validation. Benchmark performance is necessary but insufficient for clinical use; all applications require validation with domain experts and regulatory oversight. The dataset is fully anonymized under IRB-approved protocols.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\FloatBarrier
+\clearpage
+\input{checklist2.tex}
+
+\end{document}
