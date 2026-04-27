@@ -142,8 +142,9 @@ def compute_spa_score(
     embeddings  : [N, D]
     band_powers : [N, 5]
     """
-    from sklearn.linear_model import RidgeCV
+    from sklearn.linear_model import Ridge, RidgeCV
     from sklearn.metrics import r2_score
+    from sklearn.model_selection import cross_val_predict
     from sklearn.preprocessing import StandardScaler
 
     n = embeddings.shape[0]
@@ -157,7 +158,9 @@ def compute_spa_score(
     alphas = np.logspace(-3, 4, 20)
     ridge  = RidgeCV(alphas=alphas, cv=5)
     ridge.fit(X, Y)
-    Y_pred = ridge.predict(X)
+    # Out-of-sample predictions via cross_val_predict (same 5 folds, best alpha).
+    # RidgeCV.fit() selects alpha_; Ridge(alpha_) re-fits each fold for prediction.
+    Y_pred = cross_val_predict(Ridge(alpha=ridge.alpha_), X, Y, cv=5)
 
     r2_per_band = [
         float(max(0.0, r2_score(Y[:, i], Y_pred[:, i])))

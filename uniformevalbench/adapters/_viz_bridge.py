@@ -46,7 +46,7 @@ _TRAINER_MAP: dict[str, tuple[str, str]] = {
     "biot":    ("uniformevalbench.models.biot.biot_trainer",          "BiotTrainer"),
     "cbramod": ("uniformevalbench.models.cbramod.cbramod_trainer",    "CBraModTrainer"),
     "csbrain": ("uniformevalbench.models.csbrain.csbrain_trainer",    "CSBrainTrainer"),
-    "reve":    ("uniformevalbench.models.reve.reve_trainer",          "REVETrainer"),
+    "reve":    ("uniformevalbench.models.reve.reve_trainer",          "ReveTrainer"),
 }
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,7 @@
-experiments/
+experiments/results/
+experiments/logs/
+experiments/configs/
+experiments/__pycache__/
 __pycache__/
 *.pyc
 *.pyo
